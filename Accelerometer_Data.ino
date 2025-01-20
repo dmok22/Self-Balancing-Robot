@@ -43,39 +43,32 @@ void loop() {
    userInput = Serial.read();               // read user input
       
    if(userInput == 'g'){              //uncomment when testing with python       
-            
-    IMU.readAcceleration(x, y, z);
-
-    //y is ax in the note
-    //z is ay in the note
-
-    if(y >= 0){
-        y = 100*y;
-        //Serial.print("y: ");
-        //Serial.println(y);
-        }
-    if(y < 0){
-        y = 100*y;
-        //Serial.print("y: ");
-        //Serial.println(y);
-        }
-
-    if(z >= 0){
-        z = 100*z;
-       // Serial.print("z: ");
-        //Serial.println(z);
-        }
-    if(z < 0){
-        z = 100*z;
-        //Serial.print("z: ");
-        //Serial.println(z);
-        }
-
-    float thetaRadians = atan2f(y, z);
-    float thetaDegrees = thetaRadians * (180.0f / M_PI); 
-    Serial.println(thetaDegrees);
+    Accelerator();
    } //uncommnet when using with python
 
+}
+
+void Accelerator(){
+  float x, y, z;
+  IMU.readAcceleration(x, y, z);
+
+  if(y >= 0){
+      y = 100*y;
+      }
+  if(y < 0){
+      y = 100*y;
+      }
+
+  if(z >= 0){
+      z = 100*z;
+      }
+  if(z < 0){
+      z = 100*z;
+      }
+    
+  float thetaRadians = atan2f(y, z);
+  float thetaDegrees = thetaRadians * (180.0f / M_PI); 
+  Serial.println(thetaDegrees);
 }
 
   
