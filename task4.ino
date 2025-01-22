@@ -33,7 +33,9 @@ void combine(){
     gyroscope();
     float k = 0.5;
     angle = k*gry_angle + (1-k)*acc_angle;
-    Serial.println(angle);
+    char buffer[50];
+    sprintf(buffer, "%.2f, %.2f, %.2f", angle, acc_angle, gry_angle);
+    Serial.println(buffer);
 }
 
 
