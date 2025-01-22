@@ -2,7 +2,9 @@
 #include <Wire.h>
 
 long lastTime;
-float tiltAngle;
+float angle;
+float gry_angle,acc_angle;         // units degrees (filtered tilt angle)
+
 
 void setup()
 {
@@ -25,23 +27,18 @@ void setup()
 }
 
 
-void loop() {
-  char userInput;
-  float x, y, z;
-   userInput = Serial.read();               // read user input
-      
-   if(userInput == 'g'){              //uncomment when testing with python       
-    gyroscope();
-   } //uncommnet when using with python
 
+void combine(){
+    Accelerator();
+    gyroscope();
+    float k = 0.5;
+    angle = k*gry_angle + (1-k)*acc_angle;
+    Serial.println(angle);
 }
 
-/**
-   I'm expecting, over time, the Arduino_LSM6DS3.h will add functions to do most of this,
-   but as of 1.0.0 this was missing.
-*/
 
 void gyroscope(){
+
     float gyroX, gyroY, gyroZ;
     long lastInterval;
 
@@ -56,9 +53,40 @@ void gyroscope(){
 
     // Gyroscope integration for yaw (tilt angle around z-axis)
     float dt = lastInterval / 1000000.0;                               // Convert microseconds to seconds
-    tiltAngle = tiltAngle + ((gyroX) * dt); // Drift-corrected integration
-    Serial.println(tiltAngle);
-
-    
+    gry_angle = angle + ((gyroX) * dt); // Drift-corrected integration
 }
 
+void Accelerator(){
+  float x, y, z;
+  IMU.readAcceleration(x, y, z);
+
+  if(y >= 0){
+      y = 100*y;
+      }
+  if(y < 0){
+      y = 100*y;
+      }
+
+  if(z >= 0){
+      z = 100*z;
+      }
+  if(z < 0){
+      z = 100*z;
+      }
+    
+    acc_angle = atan2f(y, z);
+    acc_angle = acc_angle * (180.0f / M_PI); 
+  //Serial.println(thetaDegrees);
+}
+
+
+void loop() {
+  char userInput;
+  float x, y, z;
+   userInput = Serial.read();               // read user input
+      
+   if(userInput == 'g'){              //uncomment when testing with python       
+   combine();
+   } //uncommnet when using with python
+
+}
