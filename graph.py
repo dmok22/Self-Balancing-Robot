@@ -29,7 +29,7 @@ class AnimationPlot:
         ax.set_ylim([-100, 100])                              # Set Y axis limit of plot
         ax.set_title("Arduino Data")                        # Set title of figure
         ax.set_ylabel("Value") 
-        ax.set_xlabel("Time")                            # Set title of y axis
+        ax.set_xlabel("Last 50 labels")                            # Set title of y axis
 
 dataList = []                                           # Create empty list variable for later use
                                                         

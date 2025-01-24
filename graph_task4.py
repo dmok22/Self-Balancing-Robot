@@ -35,7 +35,7 @@ class AnimationPlot:
         ax.set_ylim([-100, 100])  # Set Y axis limit of plot
         ax.set_title("Arduino 3 angle Data")  # Set title of figure
         ax.set_ylabel("Value") 
-        ax.set_xlabel("last 50 data points")  # Set title of x axis
+        ax.set_xlabel("Last 50 labels")  # Set title of x axis
 
 # Create empty lists for storing X, Y, and Z data points
 dataLists = [[], [], []]  
