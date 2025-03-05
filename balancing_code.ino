@@ -18,6 +18,10 @@ float integral = 0;
 float derivative;
 float angle_error, previousError = 0;
 
+float Kp = 0;   // Proportional Gain
+float Ki = 0;    // Integral Gain
+float Kd = 0;    // Derivative Gain
+
 
 
 void setup() {
@@ -47,13 +51,12 @@ void loop() {
   float power_precentage = 0;
   int pwm_output = 0;
 
-  //----------------
-  if(userInput == "f25")
+  updatePID();
   //--------------
   combine();
   //Serial.println(angle);
   PID(angle);
-  Serial.println(PDI_signal);
+  //Serial.println(PDI_signal);
   moveMotors(PDI_signal);
 }
 
@@ -113,7 +116,7 @@ void Accelerator(){
 
 
 void moveMotors(float controlSignal) {
-    int pwmValue = constrain(abs(controlSignal), 0, 255); // Convert to PWMrange
+    int pwmValue = 35 + pow(10, (abs(controlSignal) / 43)); // Convert to PWMrange
     Serial.println(pwmValue);
 
     if (controlSignal > 0) {  // Move Forward
@@ -133,13 +136,93 @@ void moveMotors(float controlSignal) {
 
 void PID(float angle){
   //------------------------------------------
+  //String userInput = Serial.readStringUntil('\n');  // Read full command
+  //userInput.trim();  // Remove any extra whitespace
+  /*
+  if(userInput == "kp"){
+    while (Serial.available() == 0) {
+    }
+    userInput = Serial.readStringUntil('\n');
+     Kp = Serial.parseFloat();
+    Serial.println("kp: " + userInput);
+  }
+  if(userInput == "ki"){
+    while (Serial.available() == 0) {
+    }
+    userInput = Serial.readStringUntil('\n');
+     Ki = Serial.parseFloat();
+    Serial.println("ki: " + userInput);
+  }
+  if(userInput == "kd"){
+    while (Serial.available() == 0) {
+    }
+    userInput = Serial.readStringUntil('\n');
+     Kd = Serial.parseFloat();
+    Serial.println("kd: " + userInput);
+  }
+  */
+  /*
   float Kp = 3;   // Proportional Gain
   float Ki = 0;    // Integral Gain
   float Kd = 5;    // Derivative Gain
+  */
   //------------------------------------------
 
   angle_error = setpoint - angle;
   integral += angle_error;
   derivative = angle_error - previousError;
   PDI_signal  = (Kp * angle_error) + (Ki * integral) + (Kd * derivative);
+  PDI_signal = constrain(PDI_signal, -100, 100);
 }
+
+
+
+void updatePID() {
+    if (Serial.available()) {  // Check if data is available
+        String userInput = Serial.readStringUntil('\n');  // Read full command
+        userInput.trim();  // Remove whitespace
+
+        if (userInput.equals("kp")) {
+            Serial.print("Kp: ");
+            Serial.println(Kp);
+
+            Serial.print("Ki: ");
+            Serial.println(Ki);
+
+            Serial.print("Kd: ");
+            Serial.println(Kd);
+            while (Serial.available() == 0);  // Wait for input
+            Kp = Serial.parseFloat();
+        }
+        else if (userInput.equals("ki")) {
+            Serial.print("Kp: ");
+            Serial.println(Kp);
+
+            Serial.print("Ki: ");
+            Serial.println(Ki);
+
+            Serial.print("Kd: ");
+            Serial.println(Kd);
+            Serial.print("Enter new Ki: ");
+            while (Serial.available() == 0);
+            Ki = Serial.parseFloat();
+        }
+        else if (userInput.equals("kd")) {
+            Serial.print("Kp: ");
+            Serial.println(Kp);
+
+            Serial.print("Ki: ");
+            Serial.println(Ki);
+
+            Serial.print("Kd: ");
+            Serial.println(Kd);
+            Serial.print("Enter new Kd: ");
+            while (Serial.available() == 0);
+            Kd = Serial.parseFloat();
+        }
+        else {
+            Serial.println("Invalid command! Use: kp, ki, or kd.");
+        }
+    }
+}
+
