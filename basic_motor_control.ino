@@ -1,4 +1,5 @@
-
+#include "Arduino_BMI270_BMM150.h"
+#include <Wire.h>
 
 const int INPUT_A1= 3;  // Motor A - Input 1 (PWM)
 const int INPUT_A2 = 5;  // Motor A - Input 2 (PWM)
