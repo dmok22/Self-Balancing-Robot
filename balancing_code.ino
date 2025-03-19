@@ -1,6 +1,14 @@
 #include "Arduino_BMI270_BMM150.h"
 #include <Wire.h>
+#include <ArduinoBLE.h>
 
+// **BLE Service & Characteristic**
+BLEService customService("00000000-5EC4-4083-81CD-A10B8D5CF6EC");
+BLECharacteristic customCharacteristic(
+    "00000001-5EC4-4083-81CD-A10B8D5CF6EC", BLERead | BLEWrite | BLENotify, 50, false);
+
+
+float dt;
 
 long lastTime;
 float angle;
@@ -25,6 +33,8 @@ float Kd = 0;    // Derivative Gain
 
 
 void setup() {
+
+  setupBLE();
   
   Serial.begin(9600);
   if (!IMU.begin()) {
@@ -51,7 +61,7 @@ void loop() {
   float power_precentage = 0;
   int pwm_output = 0;
 
-  updatePID();
+  handleBLECommands(); 
   //--------------
   combine();
   //Serial.println(angle);
@@ -59,6 +69,80 @@ void loop() {
   //Serial.println(PDI_signal);
   moveMotors(PDI_signal);
 }
+
+
+
+
+void handleBLECommands() {
+  BLEDevice central = BLE.central();
+
+  if (central) {
+    Serial.print("🔗 Connected to: ");
+    Serial.println(central.address());
+
+    // Check for BLE updates **without blocking**
+    if (customCharacteristic.written()) {
+      int length = customCharacteristic.valueLength();
+      char buffer[length + 1];
+      memcpy(buffer, customCharacteristic.value(), length);
+      buffer[length] = '\0';
+
+      String receivedCommand = String(buffer);
+      Serial.print("📩 Received: ");
+      Serial.println(receivedCommand);
+
+      processCommand(receivedCommand);
+      respondToBLE(receivedCommand);
+    }
+  }
+}
+
+// **Process BLE Commands**
+void processCommand(String cmd) {
+  if (cmd.startsWith("kp=")) {
+    Kp = cmd.substring(3).toFloat();
+    Serial.print("✅ Kp Updated: "); Serial.println(Kp);
+    respondToBLE("Kp=" + String(Kp)); // Send back the updated value
+  } else if (cmd.startsWith("ki=")) {
+    Ki = cmd.substring(3).toFloat();
+    Serial.print("✅ Ki Updated: "); Serial.println(Ki);
+    respondToBLE("Ki=" + String(Ki)); // Send back the updated value
+  } else if (cmd.startsWith("kd=")) {
+    Kd = cmd.substring(3).toFloat();
+    Serial.print("✅ Kd Updated: "); Serial.println(Kd);
+    respondToBLE("Kd=" + String(Kd)); // Send back the updated value
+  } else if (cmd == "s") {  // Show PID values
+    String pidValues = "Kp=" + String(Kp) + " | Ki=" + String(Ki) + " | Kd=" + String(Kd);
+    Serial.println("🔍 " + pidValues);
+    respondToBLE(pidValues); // Send PID values over BLE
+  } else {
+    Serial.println("❌ Unknown command");
+  }
+}
+
+// **Send Acknowledgment via BLE**
+void respondToBLE(String cmd) {
+  String response = "Received: " + cmd;
+  customCharacteristic.writeValue(response.c_str());
+}
+
+
+
+void setupBLE() {
+  if (!BLE.begin()) {
+    Serial.println("❌ BLE Initialization Failed!");
+    while (1);
+  }
+  BLE.setLocalName("NanoBLE");
+  BLE.setDeviceName("NanoBLE");
+  customService.addCharacteristic(customCharacteristic);
+  BLE.addService(customService);
+  BLE.advertise();
+
+  Serial.println("✅ BLE Ready - Waiting for commands...");
+}
+
+//---------------------------------------------------------------------------------------------------------
 
 
 void combine(){
@@ -87,7 +171,7 @@ void gyroscope(){
     IMU.readGyroscope(gyroX, gyroY, gyroZ);
 
     // Gyroscope integration for yaw (tilt angle around z-axis)
-    float dt = lastInterval / 1000000.0;                               // Convert microseconds to seconds
+    dt = lastInterval / 1000000.0;                               // Convert microseconds to seconds
     gry_angle = angle + ((gyroX) * dt); // Drift-corrected integration
 }
 
@@ -116,8 +200,9 @@ void Accelerator(){
 
 
 void moveMotors(float controlSignal) {
-    int pwmValue = 35 + pow(10, (abs(controlSignal) / 43)); // Convert to PWMrange
-    Serial.println(pwmValue);
+    //int pwmValue = 35 + pow(10, (abs(controlSignal) / 43)); // Convert to PWMrange
+    //Serial.println(pwmValue);
+    int pwmValue = abs(controlSignal);
 
     if (controlSignal > 0) {  // Move Forward
       analogWrite(INPUT_A1, pwmValue); //max 255, min 0
@@ -135,44 +220,13 @@ void moveMotors(float controlSignal) {
 }
 
 void PID(float angle){
-  //------------------------------------------
-  //String userInput = Serial.readStringUntil('\n');  // Read full command
-  //userInput.trim();  // Remove any extra whitespace
-  /*
-  if(userInput == "kp"){
-    while (Serial.available() == 0) {
-    }
-    userInput = Serial.readStringUntil('\n');
-     Kp = Serial.parseFloat();
-    Serial.println("kp: " + userInput);
-  }
-  if(userInput == "ki"){
-    while (Serial.available() == 0) {
-    }
-    userInput = Serial.readStringUntil('\n');
-     Ki = Serial.parseFloat();
-    Serial.println("ki: " + userInput);
-  }
-  if(userInput == "kd"){
-    while (Serial.available() == 0) {
-    }
-    userInput = Serial.readStringUntil('\n');
-     Kd = Serial.parseFloat();
-    Serial.println("kd: " + userInput);
-  }
-  */
-  /*
-  float Kp = 3;   // Proportional Gain
-  float Ki = 0;    // Integral Gain
-  float Kd = 5;    // Derivative Gain
-  */
-  //------------------------------------------
-
   angle_error = setpoint - angle;
-  integral += angle_error;
-  derivative = angle_error - previousError;
+  integral = integral + angle_error*dt;
+  integral = constrain(integral, -255, 255);
+  derivative = (angle_error - previousError)/dt;
   PDI_signal  = (Kp * angle_error) + (Ki * integral) + (Kd * derivative);
-  PDI_signal = constrain(PDI_signal, -100, 100);
+  PDI_signal = constrain(PDI_signal, -255, 255);
+  previousError = angle_error;
 }
 
 
@@ -221,7 +275,7 @@ void updatePID() {
             Kd = Serial.parseFloat();
         }
         else {
-            Serial.println("Invalid command! Use: kp, ki, or kd.");
+            Serial.println("blow me");
         }
     }
 }
