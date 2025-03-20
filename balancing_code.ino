@@ -88,8 +88,6 @@ void handleBLECommands() {
       buffer[length] = '\0';
 
       String receivedCommand = String(buffer);
-      Serial.print("📩 Received: ");
-      Serial.println(receivedCommand);
 
       processCommand(receivedCommand);
       respondToBLE(receivedCommand);
@@ -122,7 +120,7 @@ void processCommand(String cmd) {
 
 // **Send Acknowledgment via BLE**
 void respondToBLE(String cmd) {
-  String response = "Received: " + cmd;
+  String response = "PID:" + PDI_signal;
   customCharacteristic.writeValue(response.c_str());
 }
 
@@ -148,7 +146,7 @@ void setupBLE() {
 void combine(){
     Accelerator();
     gyroscope();
-    float k = 0.5;
+    float k = 0.7;
     angle = k*gry_angle + (1-k)*acc_angle;
     char buffer[50];
     //sprintf(buffer, "%.2f, %.2f, %.2f", angle, acc_angle, gry_angle);
@@ -200,9 +198,9 @@ void Accelerator(){
 
 
 void moveMotors(float controlSignal) {
-    //int pwmValue = 35 + pow(10, (abs(controlSignal) / 43)); // Convert to PWMrange
+    int pwmValue = 35 + pow(10, (abs(controlSignal) / 43)); // Convert to PWMrange
     //Serial.println(pwmValue);
-    int pwmValue = abs(controlSignal);
+    //int pwmValue = abs(controlSignal);
 
     if (controlSignal > 0) {  // Move Forward
       analogWrite(INPUT_A1, pwmValue); //max 255, min 0
@@ -222,61 +220,16 @@ void moveMotors(float controlSignal) {
 void PID(float angle){
   angle_error = setpoint - angle;
   integral = integral + angle_error*dt;
-  integral = constrain(integral, -255, 255);
+  integral = constrain(integral, -100, 100);
   derivative = (angle_error - previousError)/dt;
-  PDI_signal  = (Kp * angle_error) + (Ki * integral) + (Kd * derivative);
-  PDI_signal = constrain(PDI_signal, -255, 255);
+  derivative = constrain(derivative, -100, 100);
+  PDI_signal  = (Kp * angle_error) + (Ki * integral) + (Kd/10 * derivative);
+  PDI_signal = constrain(PDI_signal, -100, 100);
   previousError = angle_error;
+  //Serial.println(dt);
 }
 
 
 
-void updatePID() {
-    if (Serial.available()) {  // Check if data is available
-        String userInput = Serial.readStringUntil('\n');  // Read full command
-        userInput.trim();  // Remove whitespace
 
-        if (userInput.equals("kp")) {
-            Serial.print("Kp: ");
-            Serial.println(Kp);
-
-            Serial.print("Ki: ");
-            Serial.println(Ki);
-
-            Serial.print("Kd: ");
-            Serial.println(Kd);
-            while (Serial.available() == 0);  // Wait for input
-            Kp = Serial.parseFloat();
-        }
-        else if (userInput.equals("ki")) {
-            Serial.print("Kp: ");
-            Serial.println(Kp);
-
-            Serial.print("Ki: ");
-            Serial.println(Ki);
-
-            Serial.print("Kd: ");
-            Serial.println(Kd);
-            Serial.print("Enter new Ki: ");
-            while (Serial.available() == 0);
-            Ki = Serial.parseFloat();
-        }
-        else if (userInput.equals("kd")) {
-            Serial.print("Kp: ");
-            Serial.println(Kp);
-
-            Serial.print("Ki: ");
-            Serial.println(Ki);
-
-            Serial.print("Kd: ");
-            Serial.println(Kd);
-            Serial.print("Enter new Kd: ");
-            while (Serial.available() == 0);
-            Kd = Serial.parseFloat();
-        }
-        else {
-            Serial.println("blow me");
-        }
-    }
-}
 
