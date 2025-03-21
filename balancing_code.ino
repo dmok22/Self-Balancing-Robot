@@ -9,10 +9,13 @@ BLECharacteristic customCharacteristic(
 
 
 float dt;
-
+//float PID_dt
 long lastTime;
+long lastTime_PID;
+
 float angle;
 float gry_angle,acc_angle;         // units degrees (filtered tilt angle)
+float gyroX, gyroY, gyroZ;
 
 const int INPUT_B1= 3;  // Motor A - Input 1 (PWM)
 const int INPUT_B2 = 5;  // Motor A - Input 2 (PWM)
@@ -20,6 +23,7 @@ const int INPUT_A1 = 6;  // Motor B - Input 1 (PWM)
 const int INPUT_A2 = 9;  // Motor B - Input 2 (PWM)
 
 float setpoint = 0.0;  // Desired tilt angle (upright)
+
 float PDI_signal;
 
 float integral = 0;
@@ -47,7 +51,10 @@ void setup() {
   Serial.println(" Hz");
 
   lastTime = micros();
-  Serial.println(lastTime);
+  lastTime_PID = micros();
+
+  //Serial.println(lastTime);
+  //setpoint = setpoint + 0.75;
 
   pinMode(INPUT_A1, OUTPUT);
   pinMode(INPUT_A2, OUTPUT);
@@ -77,8 +84,8 @@ void handleBLECommands() {
   BLEDevice central = BLE.central();
 
   if (central) {
-    Serial.print("🔗 Connected to: ");
-    Serial.println(central.address());
+    //Serial.print("🔗 Connected to: ");
+    //Serial.println(central.address());
 
     // Check for BLE updates **without blocking**
     if (customCharacteristic.written()) {
@@ -120,8 +127,8 @@ void processCommand(String cmd) {
 
 // **Send Acknowledgment via BLE**
 void respondToBLE(String cmd) {
-  String response = "PID:" + PDI_signal;
-  customCharacteristic.writeValue(response.c_str());
+  //String response = "PID:" + PDI_signal;
+  //customCharacteristic.writeValue(response.c_str());
 }
 
 
@@ -131,8 +138,8 @@ void setupBLE() {
     Serial.println("❌ BLE Initialization Failed!");
     while (1);
   }
-  BLE.setLocalName("NanoBLE");
-  BLE.setDeviceName("NanoBLE");
+  BLE.setLocalName("CJJ");//"NanoBLE"
+  BLE.setDeviceName("CJJ");//"NanoBLE"
   customService.addCharacteristic(customCharacteristic);
   BLE.addService(customService);
   BLE.advertise();
@@ -146,17 +153,22 @@ void setupBLE() {
 void combine(){
     Accelerator();
     gyroscope();
-    float k = 0.7;
+    float k = 0.8;//0.5
     angle = k*gry_angle + (1-k)*acc_angle;
+    
     char buffer[50];
     //sprintf(buffer, "%.2f, %.2f, %.2f", angle, acc_angle, gry_angle);
-    //Serial.println(buffer);
+    if(abs(angle)<0.7){
+      angle = 0;
+    }
+
+    //Serial.println(angle);
 }
 
 
 void gyroscope(){
 
-    float gyroX, gyroY, gyroZ;
+    //float gyroX, gyroY, gyroZ;
     long lastInterval;
 
     long currentTime = micros();
@@ -198,10 +210,15 @@ void Accelerator(){
 
 
 void moveMotors(float controlSignal) {
-    int pwmValue = 35 + pow(10, (abs(controlSignal) / 43)); // Convert to PWMrange
+    int pwmValue;
+    //int pwmValue = 35 + pow(10, (abs(controlSignal) / 43)); // Convert to PWMrange
     //Serial.println(pwmValue);
-    //int pwmValue = abs(controlSignal);
-
+    if (controlSignal != 0){
+      pwmValue = abs(controlSignal) + 30;
+    }
+    else {pwmValue = 0;}
+    pwmValue = constrain(pwmValue, 30, 255);
+    
     if (controlSignal > 0) {  // Move Forward
       analogWrite(INPUT_A1, pwmValue); //max 255, min 0
       analogWrite(INPUT_A2, 0);
@@ -218,18 +235,23 @@ void moveMotors(float controlSignal) {
 }
 
 void PID(float angle){
+  double now_PID = micros();
+  float dt_PID = (now_PID - lastTime_PID) / 1000000.0;  // seconds
+
   angle_error = setpoint - angle;
-  integral = integral + angle_error*dt;
-  integral = constrain(integral, -100, 100);
-  derivative = (angle_error - previousError)/dt;
-  derivative = constrain(derivative, -100, 100);
-  PDI_signal  = (Kp * angle_error) + (Ki * integral) + (Kd/10 * derivative);
-  PDI_signal = constrain(PDI_signal, -100, 100);
+
+  //integral = integral + angle_error*dt_PID;
+  integral = integral + angle_error;
+  integral = constrain(integral, -255, 255);
+
+  //derivative = (angle_error - previousError)/dt_PID;
+  derivative = gyroX;
+  derivative = constrain(derivative, -255, 255);
+
+  PDI_signal  = (Kp * angle_error) + (Ki * integral) + (Kd * derivative);
+  PDI_signal = constrain(PDI_signal, -255, 255);
+  
   previousError = angle_error;
+  PID_lastTime = now_PID;
   //Serial.println(dt);
 }
-
-
-
-
-
