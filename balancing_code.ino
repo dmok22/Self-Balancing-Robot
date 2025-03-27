@@ -106,22 +106,22 @@ void handleBLECommands() {
 void processCommand(String cmd) {
   if (cmd.startsWith("kp=")) {
     Kp = cmd.substring(3).toFloat();
-    Serial.print("✅ Kp Updated: "); Serial.println(Kp);
+    //Serial.print("✅ Kp Updated: "); Serial.println(Kp);
     respondToBLE("Kp=" + String(Kp)); // Send back the updated value
   } else if (cmd.startsWith("ki=")) {
     Ki = cmd.substring(3).toFloat();
-    Serial.print("✅ Ki Updated: "); Serial.println(Ki);
+    //Serial.print("✅ Ki Updated: "); Serial.println(Ki);
     respondToBLE("Ki=" + String(Ki)); // Send back the updated value
   } else if (cmd.startsWith("kd=")) {
     Kd = cmd.substring(3).toFloat();
-    Serial.print("✅ Kd Updated: "); Serial.println(Kd);
+    //Serial.print("✅ Kd Updated: "); Serial.println(Kd);
     respondToBLE("Kd=" + String(Kd)); // Send back the updated value
   } else if (cmd == "s") {  // Show PID values
-    String pidValues = "Kp=" + String(Kp) + " | Ki=" + String(Ki) + " | Kd=" + String(Kd);
-    Serial.println("🔍 " + pidValues);
-    respondToBLE(pidValues); // Send PID values over BLE
+    //String pidValues = "Kp=" + String(Kp) + " | Ki=" + String(Ki) + " | Kd=" + String(Kd);
+    //Serial.println("🔍 " + pidValues);
+    //respondToBLE(pidValues); // Send PID values over BLE
   } else {
-    Serial.println("❌ Unknown command");
+    //Serial.println("❌ Unknown command");
   }
 }
 
@@ -156,9 +156,9 @@ void combine(){
     float k = 0.8;//0.5
     angle = k*gry_angle + (1-k)*acc_angle;
     
-    char buffer[50];
+    
     //sprintf(buffer, "%.2f, %.2f, %.2f", angle, acc_angle, gry_angle);
-    if(abs(angle)<0.7){
+    if(abs(angle)<0.5){
       angle = 0;
     }
 
@@ -214,10 +214,13 @@ void moveMotors(float controlSignal) {
     //int pwmValue = 35 + pow(10, (abs(controlSignal) / 43)); // Convert to PWMrange
     //Serial.println(pwmValue);
     if (controlSignal != 0){
-      pwmValue = abs(controlSignal) + 30;
+      pwmValue = abs(controlSignal) + 20;
     }
     else {pwmValue = 0;}
-    pwmValue = constrain(pwmValue, 30, 255);
+    pwmValue = constrain(pwmValue, 0, 255);
+   // char buffer[50];
+    //sprintf(buffer, "%.2f, %d", angle, pwmValue);
+    //Serial.println(buffer);
     
     if (controlSignal > 0) {  // Move Forward
       analogWrite(INPUT_A1, pwmValue); //max 255, min 0
@@ -235,23 +238,23 @@ void moveMotors(float controlSignal) {
 }
 
 void PID(float angle){
-  double now_PID = micros();
-  float dt_PID = (now_PID - lastTime_PID) / 1000000.0;  // seconds
+  double now_PID = millis();
+  float dt_PID = (now_PID - lastTime_PID) / 1000.0;  // seconds
 
-  angle_error = setpoint - angle;
+  angle_error = angle - setpoint;
 
-  //integral = integral + angle_error*dt_PID;
-  integral = integral + angle_error;
+  integral = integral + angle_error*dt_PID;
+  //integral = integral + angle_error;
   integral = constrain(integral, -255, 255);
 
   //derivative = (angle_error - previousError)/dt_PID;
-  derivative = gyroX;
+  derivative = -gyroX;
   derivative = constrain(derivative, -255, 255);
 
   PDI_signal  = (Kp * angle_error) + (Ki * integral) + (Kd * derivative);
   PDI_signal = constrain(PDI_signal, -255, 255);
   
   previousError = angle_error;
-  PID_lastTime = now_PID;
-  //Serial.println(dt);
+  lastTime_PID = now_PID;
+  //Serial.println(dt_PID);
 }
