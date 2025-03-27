@@ -74,6 +74,7 @@ async def pid_terminal(client):
                 print("❌ Invalid input. Type a number, '=', '-', or valid command.")
         else:
             print("❓ Unknown command. Select 'kp', 'ki', or 'kd' first.")
+            
 
 async def main():
     """Main BLE connection + control loop."""
