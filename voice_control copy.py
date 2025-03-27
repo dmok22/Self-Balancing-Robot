@@ -54,15 +54,11 @@ def recognize_speech():
                     # Check if the recognized text is a valid command
                     if word in valid_commands:
                         print(f"Executing command: {word}")
-                        if recognized_text == "forward":
-                            ser.write(b"F")
-                        elif recognized_text == "stop":
-                            ser.write(b"S")
-                        elif recognized_text == "left":
-                            ser.write(b"L")
-                        elif recognized_text == "right":
-                            ser.write(b"R")
-                        # Here you can add the logic to execute the command
+                        command = (
+                            word[0].upper().encode()
+                        )  # Take first letter and convert to uppercase
+                        ser.write(command)
+                        print(f"Sent command: {command}")
                     else:
                         print("Command not recognized.")
 
