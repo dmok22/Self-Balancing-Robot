@@ -1,87 +1,84 @@
 import asyncio
-import pygame
+import XInput
 from bleak import BleakClient, BleakScanner
 
 # BLE Setup
 DEVICE_NAME = "CJJ"
 CHARACTERISTIC_UUID = "00000001-5EC4-4083-81CD-A10B8D5CF6EC"
 
-# Find Arduino BLE device by name ("CJJ")
+# Scale analog input to -100..100
+def scale(value):
+    scaled = max(min(int((value / 32767) * 100), 100), -100)
+    return 0 if abs(scaled) < 5 else scaled  # Deadzone
+
+# Find BLE device
 async def find_device():
     print("🔍 Scanning for BLE devices...")
-    devices = await BleakScanner.discover()
+    devices = await BleakScanner.discover(timeout=5.0)
     for device in devices:
+        print(f"🔎 Found: {device.name} @ {device.address}")
         if device.name and DEVICE_NAME in device.name:
-            print(f"✅ Found {device.name} at {device.address}")
+            print(f"✅ Matched: {device.name} at {device.address}")
             return device.address
     print("❌ Device not found.")
     return None
 
-# Send BLE command
+# Send command to BLE
 async def send_command(client, command):
-    await client.write_gatt_char(CHARACTERISTIC_UUID, command.encode())
-    print(f"📡 Sent: {command}")
+    try:
+        await client.write_gatt_char(CHARACTERISTIC_UUID, command.encode())
+    except Exception as e:
+        print(f"❌ Failed to send: {e}")
 
-# Initialize Xbox controller (via Bluetooth)
-def init_joystick():
-    pygame.init()
-    pygame.joystick.init()
-
-    if pygame.joystick.get_count() == 0:
-        print("❌ No joystick detected.")
-        return None
-
-    joystick = pygame.joystick.Joystick(0)
-    joystick.init()
-    print(f"🎮 Controller connected: {joystick.get_name()}")
-    return joystick
-
-# Main joystick loop
+# Controller input loop
 async def joystick_loop(client):
-    joystick = init_joystick()
-    if not joystick:
-        return
+    print("🎮 Xbox Controller Active. Press START to exit.")
+    last_command = ""
 
     try:
         while True:
-            pygame.event.pump()
+            state = XInput.get_state(0)
 
-            # Quit if "Back" button is pressed (button 6)
-            if joystick.get_button(6):
-                print("🛑 Quit button pressed.")
+            # ✅ Forward = +100, Reverse = -100
+            y = scale(state.Gamepad.sThumbLY)   # Left stick Y
+            x = scale(state.Gamepad.sThumbRX)   # Right stick X
+
+            command = f"x={x},y={y}"
+            if command != last_command:
+                await send_command(client, command)
+                print(command)
+                last_command = command
+
+            # Vibration based on Y-axis intensity
+            intensity = abs(y) / 100
+            XInput.set_vibration(0, intensity, intensity)
+
+            # Exit on START (hex 0x0010)
+            if state.Gamepad.wButtons & 0x0010:
+                print("🛑 START pressed — exiting.")
                 break
 
-            # Forward/back = left stick Y (axis 1)
-            # Left/right = right stick X (axis 2) ✅ FIXED
-            forward = -joystick.get_axis(1)
-            turn = joystick.get_axis(2)
-
-            # Deadzone filtering
-            deadzone = 0.05
-            forward = 0 if abs(forward) < deadzone else forward
-            turn = 0 if abs(turn) < deadzone else turn
-
-            # Format: "x=turn,y=forward"
-            command = f"x={turn:.2f},y={forward:.2f}"
-            await send_command(client, command)
-
-            await asyncio.sleep(0.05)  # 20Hz
+            await asyncio.sleep(0.005)
     except KeyboardInterrupt:
-        print("👋 Stopping via keyboard interrupt.")
+        print("👋 Keyboard exit.")
     finally:
-        pygame.quit()
-        print("🧹 Cleaned up and exited.")
+        XInput.set_vibration(0, 0, 0)
+        print("🧹 Controller loop ended.")
 
-# Main BLE + control
+# Main BLE + controller logic
 async def main():
+    await asyncio.sleep(1)
     address = await find_device()
     if not address:
         return
 
-    async with BleakClient(address) as client:
-        print("🔗 Connected to CJJ!")
-        await client.start_notify(CHARACTERISTIC_UUID, lambda s, d: print(f"🔹 {d.decode()}"))
-        await joystick_loop(client)
+    try:
+        async with BleakClient(address, timeout=20.0) as client:
+            print("🔗 Connected to CJJ!")
+            await client.start_notify(CHARACTERISTIC_UUID, lambda s, d: None)
+            await joystick_loop(client)
+    except Exception as e:
+        print(f"❌ BLE connection error: {e}")
 
 if __name__ == "__main__":
     asyncio.run(main())
