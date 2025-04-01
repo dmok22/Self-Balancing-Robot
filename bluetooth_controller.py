@@ -1,19 +1,10 @@
 import asyncio
 import pygame
-import pyxinput  # Windows-only: Xbox controller interface
 from bleak import BleakClient, BleakScanner
 
 # BLE Setup
 DEVICE_NAME = "CJJ"
 CHARACTERISTIC_UUID = "00000001-5EC4-4083-81CD-A10B8D5CF6EC"
-
-# Connect to first Xbox controller via XInput
-def get_xinput_controller():
-    try:
-        return pyxinput.vController()
-    except Exception as e:
-        print("❌ Could not initialize XInput controller:", e)
-        return None
 
 # Find Arduino BLE device by name ("CJJ")
 async def find_device():
@@ -48,46 +39,30 @@ def init_joystick():
 # Main joystick loop
 async def joystick_loop(client):
     joystick = init_joystick()
-    xinput = get_xinput_controller()
-    if not joystick or not xinput:
+    if not joystick:
         return
 
     try:
         while True:
             pygame.event.pump()
 
-            # Quit if "Back" button is pressed (button 6)
-            if joystick.get_button(6):
-                print("🛑 Quit button pressed.")
-                break
+            x_axis = joystick.get_axis(0)  # Left stick X (turn)
+            y_axis = -joystick.get_axis(1)  # Left stick Y (forward/backward)
 
-            # Forward/back = left stick Y (axis 1)
-            # Left/right = right stick X (axis 2)
-            forward = -joystick.get_axis(1)
-            turn = joystick.get_axis(2)
-
-            # Deadzone filtering
+            # Deadzone filter
             deadzone = 0.05
-            forward = 0 if abs(forward) < deadzone else forward
-            turn = 0 if abs(turn) < deadzone else turn
+            x_axis = 0 if abs(x_axis) < deadzone else x_axis
+            y_axis = 0 if abs(y_axis) < deadzone else y_axis
 
-            # Trigger vibration at extreme turn
-            if abs(turn) > 0.95:
-                xinput.set_vibration(0.5, 0.5)  # (left_motor, right_motor)
-            else:
-                xinput.set_vibration(0, 0)
-
-            # Send command to Arduino
-            command = f"x={turn:.2f},y={forward:.2f}"
+            # Format command: "x=0.12,y=0.43"
+            command = f"x={x_axis:.2f},y={y_axis:.2f}"
             await send_command(client, command)
 
             await asyncio.sleep(0.05)  # 20Hz
     except KeyboardInterrupt:
-        print("👋 Stopping via keyboard interrupt.")
+        print("👋 Controller loop stopped.")
     finally:
-        xinput.set_vibration(0, 0)  # Ensure vibration stops
         pygame.quit()
-        print("🧹 Cleaned up and exited.")
 
 # Main BLE + control
 async def main():
