@@ -46,23 +46,31 @@ async def joystick_loop(client):
         while True:
             pygame.event.pump()
 
-            x_axis = joystick.get_axis(0)  # Left stick X (turn)
-            y_axis = -joystick.get_axis(1)  # Left stick Y (forward/backward)
+            # Quit if "Back" button is pressed (button 6)
+            if joystick.get_button(6):
+                print("🛑 Quit button pressed.")
+                break
 
-            # Deadzone filter
+            # Forward/back = left stick Y (axis 1)
+            # Left/right = right stick X (axis 2) ✅ FIXED
+            forward = -joystick.get_axis(1)
+            turn = joystick.get_axis(2)
+
+            # Deadzone filtering
             deadzone = 0.05
-            x_axis = 0 if abs(x_axis) < deadzone else x_axis
-            y_axis = 0 if abs(y_axis) < deadzone else y_axis
+            forward = 0 if abs(forward) < deadzone else forward
+            turn = 0 if abs(turn) < deadzone else turn
 
-            # Format command: "x=0.12,y=0.43"
-            command = f"x={x_axis:.2f},y={y_axis:.2f}"
+            # Format: "x=turn,y=forward"
+            command = f"x={turn:.2f},y={forward:.2f}"
             await send_command(client, command)
 
             await asyncio.sleep(0.05)  # 20Hz
     except KeyboardInterrupt:
-        print("👋 Controller loop stopped.")
+        print("👋 Stopping via keyboard interrupt.")
     finally:
         pygame.quit()
+        print("🧹 Cleaned up and exited.")
 
 # Main BLE + control
 async def main():
