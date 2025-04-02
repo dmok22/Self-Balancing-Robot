@@ -34,38 +34,50 @@ async def send_command(client, command):
 async def joystick_loop(client):
     print("🎮 Xbox Controller Active. Press START to exit.")
     last_command = ""
+    mode_toggle = 0
+    x_button_last = 0
 
     try:
         while True:
             state = XInput.get_state(0)
 
-            # ✅ Forward = +100, Reverse = -100
-            y = scale(state.Gamepad.sThumbLY)   # Left stick Y
-            x = scale(state.Gamepad.sThumbRX)   # Right stick X
+            # Joystick scaling
+            y = scale(state.Gamepad.sThumbLY)
+            x = scale(state.Gamepad.sThumbRX)
 
+            # Send x/y only if changed
             command = f"x={x},y={y}"
             if command != last_command:
                 await send_command(client, command)
                 print(command)
                 last_command = command
 
-            # Vibration based on Y-axis intensity
+            # Vibrate based on y intensity
             intensity = abs(y) / 100
             XInput.set_vibration(0, intensity, intensity)
 
-            # Exit on START (hex 0x0010)
+            # ✅ Toggle mode on X button press (0x1000)
+            x_button_now = state.Gamepad.wButtons & 0x1000
+            if x_button_now and not x_button_last:
+                mode_toggle = 1 - mode_toggle  # toggle 0 ↔ 1
+                await send_command(client, f"mode={mode_toggle}")
+                print(f"🔁 Mode toggled: mode={mode_toggle}")
+            x_button_last = x_button_now
+
+            # Exit on START (0x0010)
             if state.Gamepad.wButtons & 0x0010:
                 print("🛑 START pressed — exiting.")
                 break
 
             await asyncio.sleep(0.005)
+
     except KeyboardInterrupt:
         print("👋 Keyboard exit.")
     finally:
         XInput.set_vibration(0, 0, 0)
         print("🧹 Controller loop ended.")
 
-# Main BLE + controller logic
+# BLE + controller main
 async def main():
     await asyncio.sleep(1)
     address = await find_device()
