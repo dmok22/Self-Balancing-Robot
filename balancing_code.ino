@@ -40,12 +40,29 @@ float integral = 0;
 float derivative;
 float angle_error, previousError = 0;
 
+
+float Kp = 17.5;   // Proportional Gain
+float Ki = 65.8;    // Integral Gain
+float Kd = 1.37;    // Derivative Gain
+float sp = -0.6;  //additional setpoint adjustment due to center of gravity
+
+
+/*
 float Kp = 0;   // Proportional Gain
 float Ki = 0;    // Integral Gain
 float Kd = 0;    // Derivative Gain
-float sp = -1.15;  //additional setpoint adjustment due to center of gravity
+float sp = 0;  //additional setpoint adjustment due to center of gravity
+*/
 
 int motor_difference;
+
+float turning_coeff = 0.0;
+float moving_coeff = 0.0;
+float moving_mt = 0.0;
+
+int mode = 0;
+
+
 
 
 void setup() {
@@ -143,34 +160,48 @@ void handleBLECommands() {
   }
 }
 
-// **Process BLE Commands**
+
 void processCommand(String cmd) {
   if (cmd.startsWith("kp=")) {
     Kp = cmd.substring(3).toFloat();
-    //Serial.print("✅ Kp Updated: "); Serial.println(Kp);
-    respondToBLE("Kp=" + String(Kp)); // Send back the updated value
+    respondToBLE("Kp=" + String(Kp));
   } else if (cmd.startsWith("ki=")) {
     Ki = cmd.substring(3).toFloat();
-    //Serial.print("✅ Ki Updated: "); Serial.println(Ki);
-    respondToBLE("Ki=" + String(Ki)); // Send back the updated value
+    respondToBLE("Ki=" + String(Ki));
   } else if (cmd.startsWith("kd=")) {
     Kd = cmd.substring(3).toFloat();
-    //Serial.print("✅ Kd Updated: "); Serial.println(Kd);
-    respondToBLE("Kd=" + String(Kd)); // Send back the updated value
+    respondToBLE("Kd=" + String(Kd));
   } else if (cmd.startsWith("md=")) {
     motor_difference = cmd.substring(3).toFloat();
-    //Serial.print("✅ sp Updated: "); Serial.println(sp);
-    respondToBLE("motor_difference=" + String(motor_difference)); // Send back the updated value
-  }
-  else if (cmd.startsWith("sp=")) {
+    respondToBLE("motor_difference=" + String(motor_difference));
+  } else if (cmd.startsWith("sp=")) {
     sp = cmd.substring(3).toFloat();
-    //Serial.print("✅ sp Updated: "); Serial.println(sp);
-    respondToBLE("sp=" + String(sp)); // Send back the updated value
-  } 
-  else {
-    //Serial.println("❌ Unknown command");
+    respondToBLE("sp=" + String(sp));
+
+  } else if (cmd.startsWith("mode=")) {
+  mode = cmd.substring(5).toInt();
+  respondToBLE("mode=" + String(mode));
+  } else if (cmd.startsWith("x=")) {
+    // Parse both x and y from a string like "x=6.5,y=33.7"
+    int commaIndex = cmd.indexOf(',');
+    if (commaIndex > 0) {
+      String xStr = cmd.substring(2, commaIndex);
+      String yStr = cmd.substring(cmd.indexOf("y=") + 2);
+      turning_coeff = xStr.toFloat();
+      moving_coeff = yStr.toFloat();
+
+      // Optional debug:
+       //Serial.print("📦 X: "); Serial.print(turning_coeff);
+       //Serial.print(" | Y: "); Serial.println(moving_coeff);
+    }
+
+  } else {
+    // Unknown command
+    // Serial.println("❌ Unknown command");
   }
 }
+
+
 
 void respondToBLE(String response) {
   customCharacteristic.writeValue(response.c_str());
@@ -257,6 +288,11 @@ void moveMotors(float controlSignal) {
     //int pwmValue = 35 + pow(10, (abs(controlSignal) / 43)); // Convert to PWMrange
     //Serial.println(pwmValue);
 
+    if (mode == 0) {
+      moving_mt = 0.05;
+    } else {
+      moving_mt *= 0.1; // for example
+    }
     // for getting the initial pwm 
     if (abs(controlSignal) > 0){
       left_pwmValue = abs(controlSignal) + 0;
@@ -266,6 +302,14 @@ void moveMotors(float controlSignal) {
       left_pwmValue = 0;
       right_pwmValue = 0;
     }
+
+    if (turning_coeff > 0){
+      right_pwmValue = right_pwmValue * (1-abs(turning_coeff)*0.01);
+    }
+    else if(turning_coeff <= 0){
+      left_pwmValue = left_pwmValue * (1-abs(turning_coeff)*0.01);
+    }
+
 
     // contraint 
     right_pwmValue = constrain(right_pwmValue, 0, 255);
@@ -295,7 +339,9 @@ void PID(float angle){
   double now_PID = millis();
   float dt_PID = (now_PID - lastTime_PID) / 1000.0;  // seconds
 
-  angle_error = angle - (setpoint + sp);
+  Serial.print("cjj: "); 
+  Serial.println(moving_coeff);
+  angle_error = angle - (setpoint + sp + moving_mt * moving_coeff);
 
   integral = integral + angle_error*dt_PID;
   //integral = integral + angle_error;
