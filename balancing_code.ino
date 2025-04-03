@@ -42,6 +42,14 @@ float moving_coeff = 0.0;
 float moving_mt = 0.0;
 int mode = 0;
 
+// Flashing state for turn signals
+int left_signal_state = 0;
+int right_signal_state = 0;
+bool left_led_on = false;
+bool right_led_on = false;
+unsigned long last_blink_time = 0;
+const unsigned long blink_interval = 500;
+
 void setup() {
   setupBLE();
 
@@ -68,18 +76,30 @@ void setup() {
 
   pinMode(A0, OUTPUT);  // Left signal
   pinMode(A1, OUTPUT);  // Right signal
-  pinMode(A2, OUTPUT);  // Headlight
+  pinMode(A3, OUTPUT);  // Headlight
 }
 
 void loop() {
-  float limited_angle;
-  float power_precentage = 0;
-  int pwm_output = 0;
-
   handleBLECommands();
   combine();
   PID(angle);
   moveMotors(PDI_signal);
+
+  // Flashing logic for turn signals
+  unsigned long current_time = millis();
+  if (current_time - last_blink_time >= blink_interval) {
+    last_blink_time = current_time;
+
+    if (left_signal_state) {
+      left_led_on = !left_led_on;
+      digitalWrite(A0, left_led_on ? HIGH : LOW);
+    }
+
+    if (right_signal_state) {
+      right_led_on = !right_led_on;
+      digitalWrite(A1, right_led_on ? HIGH : LOW);
+    }
+  }
 }
 
 //------------------------------------------------------------------------------------------------------
@@ -148,16 +168,22 @@ void processCommand(String cmd) {
       moving_coeff = yStr.toFloat();
     }
   } else if (cmd.startsWith("left_signal=")) {
-    int val = cmd.substring(12).toInt();
-    digitalWrite(A0, val ? HIGH : LOW);
-    respondToBLE("left_signal=" + String(val));
+    left_signal_state = cmd.substring(12).toInt();
+    if (left_signal_state == 0) {
+      digitalWrite(A0, LOW);
+      left_led_on = false;
+    }
+    respondToBLE("left_signal=" + String(left_signal_state));
   } else if (cmd.startsWith("right_signal=")) {
-    int val = cmd.substring(13).toInt();
-    digitalWrite(A1, val ? HIGH : LOW);
-    respondToBLE("right_signal=" + String(val));
+    right_signal_state = cmd.substring(13).toInt();
+    if (right_signal_state == 0) {
+      digitalWrite(A1, LOW);
+      right_led_on = false;
+    }
+    respondToBLE("right_signal=" + String(right_signal_state));
   } else if (cmd.startsWith("headlight=")) {
     int val = cmd.substring(10).toInt();
-    digitalWrite(A2, val ? HIGH : LOW);
+    digitalWrite(A3, val ? HIGH : LOW);
     respondToBLE("headlight=" + String(val));
   }
 }
