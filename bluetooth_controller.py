@@ -37,6 +37,14 @@ async def joystick_loop(client):
     mode_toggle = 0
     x_button_last = 0
 
+    left_signal = 0
+    right_signal = 0
+    lb_last = 0
+    rb_last = 0
+
+    headlight = 0
+    y_button_last = 0
+
     try:
         while True:
             state = XInput.get_state(0)
@@ -56,13 +64,37 @@ async def joystick_loop(client):
             intensity = abs(y) / 100
             XInput.set_vibration(0, intensity, intensity)
 
-            # ✅ Toggle mode on X button press (0x1000)
-            x_button_now = state.Gamepad.wButtons & 0x1000
+            # Toggle mode on X button (0x0400)
+            x_button_now = state.Gamepad.wButtons & 0x400
             if x_button_now and not x_button_last:
-                mode_toggle = 1 - mode_toggle  # toggle 0 ↔ 1
+                mode_toggle = 1 - mode_toggle
                 await send_command(client, f"mode={mode_toggle}")
                 print(f"🔁 Mode toggled: mode={mode_toggle}")
             x_button_last = x_button_now
+
+            # Toggle left signal on LB (0x0100)
+            lb_now = state.Gamepad.wButtons & 0x0100
+            if lb_now and not lb_last:
+                left_signal = 1 - left_signal
+                await send_command(client, f"left_signal={left_signal}")
+                print(f"🟨 Left signal toggled: {left_signal}")
+            lb_last = lb_now
+
+            # Toggle right signal on RB (0x0200)
+            rb_now = state.Gamepad.wButtons & 0x0200
+            if rb_now and not rb_last:
+                right_signal = 1 - right_signal
+                await send_command(client, f"right_signal={right_signal}")
+                print(f"🟧 Right signal toggled: {right_signal}")
+            rb_last = rb_now
+
+            # Toggle headlight on Y button (0x0800)
+            y_button_now = state.Gamepad.wButtons & 0x0800
+            if y_button_now and not y_button_last:
+                headlight = 1 - headlight
+                await send_command(client, f"headlight={headlight}")
+                print(f"💡 Headlight toggled: {headlight}")
+            y_button_last = y_button_now
 
             # Exit on START (0x0010)
             if state.Gamepad.wButtons & 0x0010:
