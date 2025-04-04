@@ -27,6 +27,7 @@ const int INPUT_A2 = 9;
 
 float setpoint = 0;
 float PDI_signal;
+float previous_PDI = 0;  // For brake light detection
 float integral = 0;
 float derivative;
 float angle_error, previousError = 0;
@@ -76,6 +77,7 @@ void setup() {
 
   pinMode(A0, OUTPUT);  // Left signal
   pinMode(A1, OUTPUT);  // Right signal
+  pinMode(A2, OUTPUT);  // Brake light
   pinMode(A3, OUTPUT);  // Headlight
 }
 
@@ -133,7 +135,6 @@ void handleBLECommands() {
       buffer[length] = '\0';
 
       String receivedCommand = String(buffer);
-
       processCommand(receivedCommand);
       respondToBLE(receivedCommand);
     }
@@ -204,7 +205,6 @@ void setupBLE() {
 }
 
 //---------------------------------------------------------------------------------------------------------
-
 void combine() {
   Accelerator();
   gyroscope();
@@ -230,7 +230,6 @@ void gyroscope() {
   lastTime = currentTime;
 
   IMU.readGyroscope(gyroX, gyroY, gyroZ);
-
   dt = lastInterval / 1000.0;
   gry_angle = angle + ((-gyroX) * dt);
 }
@@ -248,20 +247,8 @@ void moveMotors(float controlSignal) {
 
   if (mode == 0) {
     moving_mt = 0.05;
-    if (turning_coeff > 0) {
-    right_pwmValue *= (1 - abs(turning_coeff) * 0.01);
-    left_pwmValue *= (1 - abs(turning_coeff) * 0.005);
   } else {
-    left_pwmValue *= (1 - abs(turning_coeff) * 0.01);
-    right_pwmValue *= (1 - abs(turning_coeff) * 0.005);
-  }
-  } else {
-    moving_mt *= 0.1;
-    if (turning_coeff > 0) {
-    right_pwmValue *= (1 - abs(turning_coeff) * 0.01);
-  } else {
-    left_pwmValue *= (1 - abs(turning_coeff) * 0.01);
-  }
+    moving_mt = 0.1;
   }
 
   if (abs(controlSignal) > 0) {
@@ -271,7 +258,24 @@ void moveMotors(float controlSignal) {
     left_pwmValue = 0;
     right_pwmValue = 0;
   }
-  
+
+  // 🛠 Apply turning logic AFTER setting PWM values
+  if (mode == 0) {
+    if (turning_coeff > 0) {
+      right_pwmValue *= (1 - abs(turning_coeff) * 0.005);
+      
+    } else {
+      left_pwmValue *= (1 - abs(turning_coeff) * 0.005);
+      
+    }
+  } else {
+    if (turning_coeff > 0) {
+      right_pwmValue *= (1 - abs(turning_coeff) * 0.01);
+    } else {
+      left_pwmValue *= (1 - abs(turning_coeff) * 0.01);
+    }
+  }
+
   right_pwmValue = constrain(right_pwmValue, 0, 255);
   left_pwmValue = constrain(left_pwmValue, 0, 255);
 
@@ -305,6 +309,15 @@ void PID(float angle) {
   PDI_signal = (Kp * angle_error) + (Ki * integral) + (Kd * derivative);
   PDI_signal = constrain(PDI_signal, -255, 255);
 
+  // ✅ Brake light logic on A2 based on deceleration
+  float decel_threshold = 15.0;
+  if (abs(previous_PDI) - abs(PDI_signal) > decel_threshold) {
+    digitalWrite(A2, HIGH);
+  } else {
+    digitalWrite(A2, LOW);
+  }
+
+  previous_PDI = PDI_signal;
   previousError = angle_error;
   lastTime_PID = now_PID;
 }
