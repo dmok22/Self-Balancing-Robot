@@ -248,8 +248,20 @@ void moveMotors(float controlSignal) {
 
   if (mode == 0) {
     moving_mt = 0.05;
+    if (turning_coeff > 0) {
+    right_pwmValue *= (1 - abs(turning_coeff) * 0.01);
+    left_pwmValue *= (1 - abs(turning_coeff) * 0.005);
+  } else {
+    left_pwmValue *= (1 - abs(turning_coeff) * 0.01);
+    right_pwmValue *= (1 - abs(turning_coeff) * 0.005);
+  }
   } else {
     moving_mt *= 0.1;
+    if (turning_coeff > 0) {
+    right_pwmValue *= (1 - abs(turning_coeff) * 0.01);
+  } else {
+    left_pwmValue *= (1 - abs(turning_coeff) * 0.01);
+  }
   }
 
   if (abs(controlSignal) > 0) {
@@ -259,13 +271,7 @@ void moveMotors(float controlSignal) {
     left_pwmValue = 0;
     right_pwmValue = 0;
   }
-
-  if (turning_coeff > 0) {
-    right_pwmValue *= (1 - abs(turning_coeff) * 0.01);
-  } else {
-    left_pwmValue *= (1 - abs(turning_coeff) * 0.01);
-  }
-
+  
   right_pwmValue = constrain(right_pwmValue, 0, 255);
   left_pwmValue = constrain(left_pwmValue, 0, 255);
 
