@@ -4,6 +4,14 @@ from bleak import BleakClient, BleakScanner
 import os
 import speech_recognition as sr
 from google.cloud import speech
+import secrets
+import string
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+import tkinter as tk
+from tkinter import simpledialog
+from tkinter import messagebox
 
 # BLE Setup
 DEVICE_NAME = "CJJ"
@@ -178,13 +186,66 @@ async def recognize_speech_and_send(client):
                 print(f"Google Speech Recognition error; {e}")
 
 
+# Function to get user input
+def get_user_input(prompt):
+    root = tk.Tk()
+    root.withdraw()
+    user_input = simpledialog.askstring("Input", prompt)
+    return user_input
+
+
+# Function to generate a random number password
+def generate_random_number_password(length=6):
+    digits = string.digits
+    password = "".join(secrets.choice(digits) for i in range(length))
+    return password
+
+
+# Function to send email
+def send_email(subject, message, to_email):
+    from_email = "20040418jeff@gmail.com"
+    password = "bxmu rzjz ppah gjsd"
+    msg = MIMEMultipart()
+    msg["From"] = from_email
+    msg["To"] = to_email
+    msg["Subject"] = subject
+    body = MIMEText(message, "plain")
+    msg.attach(body)
+    with smtplib.SMTP("smtp.gmail.com", 587) as server:
+        server.starttls()
+        server.login(from_email, password)
+        text = msg.as_string()
+        server.sendmail(from_email, to_email, text)
+
+
+# Function to verify password
+def verify_password():
+    password = generate_random_number_password()
+    ask_email = "Please Enter The Email Where You Want To Get Your Password:"
+    email = get_user_input(ask_email)
+    send_email("Oven Controller Password", f"Your password is: {password}", email)
+    password_chance = 3
+    while password_chance > 0:
+        get_password = f"please enter the password sent to your email:\nyou have {password_chance} chances."
+        email_password = get_user_input(get_password)
+        if email_password == password:
+            messagebox.showinfo("Success", "Password correct :)")
+            return True
+        else:
+            messagebox.showerror("Error", "Password wrong :(")
+            password_chance -= 1
+    messagebox.showerror("Error", "All attempts used, please restart the program")
+    return False
+
+
 # BLE + controller main
 async def main():
+    if not verify_password():
+        return
     await asyncio.sleep(1)
     address = await find_device()
     if not address:
         return
-
     try:
         async with BleakClient(address, timeout=20.0) as client:
             print("🔗 Connected to CJJ!")
