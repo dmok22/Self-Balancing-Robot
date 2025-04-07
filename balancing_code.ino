@@ -54,6 +54,8 @@ bool right_led_on = false;
 unsigned long last_blink_time = 0;
 const unsigned long blink_interval = 500;
 
+bool sonar_enabled = false;  // ✅ New sonar toggle flag
+
 void setup() {
   setupBLE();
 
@@ -89,6 +91,12 @@ void loop() {
   combine();
   PID(angle);
   moveMotors(PDI_signal);
+
+  // ✅ Sonar scan placeholder
+  if (sonar_enabled) {
+    // Replace with sonar code
+    Serial.println("📡 Sonar scanning active...");
+  }
 
   unsigned long current_time = millis();
   if (current_time - last_blink_time >= blink_interval) {
@@ -173,6 +181,11 @@ void processCommand(String cmd) {
     lt_trigger = cmd.substring(3).toFloat();
   } else if (cmd.startsWith("rt=")) {
     rt_trigger = cmd.substring(3).toFloat();
+  } else if (cmd.startsWith("sonar=")) {
+    sonar_enabled = cmd.substring(6).toInt() == 1;
+    Serial.print("Sonar is now ");
+    Serial.println(sonar_enabled ? "ENABLED" : "DISABLED");
+    respondToBLE("sonar=" + String(sonar_enabled));
   } else if (cmd.startsWith("single=")) {
     single_wheel = cmd.substring(7);
     Serial.print("Single wheel mode: ");
@@ -245,7 +258,6 @@ void gyroscope() {
 
 void Accelerator() {
   float x, y, z;
-  int i =
   IMU.readAcceleration(x, y, z);
   acc_angle = atan2f(100 * y, 100 * z);
   acc_angle = acc_angle * (180.0f / M_PI);
@@ -261,21 +273,18 @@ void moveMotors(float controlSignal) {
     moving_mt = 0.1;
   }
 
-if (abs(controlSignal) > 30 && abs(derivative) >= 15) {
-  left_pwmValue = abs(controlSignal) + 25;
-  right_pwmValue = abs(controlSignal) + 25 + motor_difference;
-  Serial.println("1");
-}
-else if (abs(derivative) < 15 || abs(controlSignal) < 30) {
-  left_pwmValue = abs(controlSignal) + 25;
-  right_pwmValue = abs(controlSignal) + 25 + motor_difference;
-  Serial.println("0");
-}
-else {
-  left_pwmValue = 0;
-  right_pwmValue = 0;
-}
-
+  if (abs(controlSignal) > 30 && abs(derivative) >= 15) {
+    left_pwmValue = abs(controlSignal) + 25;
+    right_pwmValue = abs(controlSignal) + 25 + motor_difference;
+    Serial.println("1");
+  } else if (abs(derivative) < 15 || abs(controlSignal) < 30) {
+    left_pwmValue = abs(controlSignal) + 25;
+    right_pwmValue = abs(controlSignal) + 25 + motor_difference;
+    Serial.println("0");
+  } else {
+    left_pwmValue = 0;
+    right_pwmValue = 0;
+  }
 
   if (mode == 0) {
     if (turning_coeff > 0) {
@@ -294,15 +303,13 @@ else {
   if (lt_trigger > 50.0) left_pwmValue = 0;
   if (rt_trigger > 50.0) right_pwmValue = 0;
 
-  // ✅ New single wheel override logic
   if (single_wheel == "left") right_pwmValue = 0;
   else if (single_wheel == "right") left_pwmValue = 0;
 
-  if(abs(controlSignal) < 1){
+  if (abs(controlSignal) < 1) {
     right_pwmValue = 0;
     left_pwmValue = 0;
   }
-  
 
   right_pwmValue = constrain(right_pwmValue, 0, 255);
   left_pwmValue = constrain(left_pwmValue, 0, 255);
@@ -323,27 +330,19 @@ else {
 void PID(float angle) {
   double now_PID = millis();
   float dt_PID = (now_PID - lastTime_PID) / 1000.0;
-  float last_d; 
 
-  //Serial.print("cjj: ");
-  //Serial.println(moving_coeff);
   angle_error = angle - (setpoint + moving_mt * moving_coeff);
 
-  if (abs(angle_error) <= 0.1){
+  if (abs(angle_error) <= 0.1) {
     angle_error = 0;
   }
 
-  if(abs(angle_error) <= 0.5){
-    integral = integral;
-  }
-  else{
+  if (abs(angle_error) > 0.5) {
     integral += angle_error * dt_PID;
   }
 
   integral = constrain(integral, -255, 255);
-
   derivative = -gyroX + gryoX_drift;
-  //derivative = (angle_error - previousError)/dt_PID;
   derivative = constrain(derivative, -255, 255);
 
   PDI_signal = (Kp * angle_error) + (Ki * integral) + (Kd * derivative);
@@ -359,18 +358,4 @@ void PID(float angle) {
   previous_PDI = PDI_signal;
   previousError = angle_error;
   lastTime_PID = now_PID;
-  
-  
-  //------
-//Serial.print("d: ");
-//Serial.println(derivative, 2);  good 
-
-//Serial.print("integral");
-//Serial.println(PDI_signal, 2);  // prints with 2 decimal places
-
-//Serial.print("angle ");
-//Serial.println(angle_error, 2);  // prints with 2 decimal places
-
-  //------
-
 }
