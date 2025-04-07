@@ -108,7 +108,7 @@ async def joystick_loop(client):
                 prev_rt = rt_val
 
             # Toggle mode on X button (0x0400)
-            x_button_now = state.Gamepad.wButtons & 0x400
+            x_button_now = state.Gamepad.wButtons & 0x4000
             if x_button_now and not x_button_last:
                 mode_toggle = 1 - mode_toggle
                 await send_command(client, f"mode={mode_toggle}")
@@ -132,7 +132,7 @@ async def joystick_loop(client):
             rb_last = rb_now
 
             # Toggle headlight on Y button (0x0800)
-            y_button_now = state.Gamepad.wButtons & 0x0800
+            y_button_now = state.Gamepad.wButtons & 0x08000
             if y_button_now and not y_button_last:
                 headlight = 1 - headlight
                 await send_command(client, f"headlight={headlight}")
@@ -271,8 +271,8 @@ def verify_password():
 
 # BLE + controller main
 async def main():
-    if not verify_password():
-        return
+    #if not verify_password():
+        #return
     await asyncio.sleep(1)
     address = await find_device()
     if not address:
