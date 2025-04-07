@@ -172,20 +172,16 @@ void handleBLECommands() {
 
 void processCommand(String cmd) {
   if (cmd == "forward") {
-    // Increase setpoint to move forward
     setpoint += 5;
     respondToBLE("Setpoint increased: " + String(setpoint));
   } else if (cmd == "stop") {
-    // Reset setpoint to stop
     setpoint = 0;
     respondToBLE("Setpoint reset: " + String(setpoint));
   } else if (cmd == "left") {
-    // Adjust turning coefficient to turn left
     turning_coeff -= 0.1;
     respondToBLE("Turning left: " + String(turning_coeff));
   } else if (cmd == "right") {
-    // Adjust turning coefficient to turn right
-    turning_coeff += 0.1;
+    turning_coeff += 0.1; 
     respondToBLE("Turning right: " + String(turning_coeff));
   } else if (cmd.startsWith("kp=")) {
     Kp = cmd.substring(3).toFloat();

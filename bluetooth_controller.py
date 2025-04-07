@@ -18,7 +18,9 @@ DEVICE_NAME = "CJJ"
 CHARACTERISTIC_UUID = "00000001-5EC4-4083-81CD-A10B8D5CF6EC"
 
 # Set up Google Cloud credentials
-os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "speech-to-text-key.json"
+#os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "speech-to-text-key.json"
+
+os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = r"C:\Users\Jeffrey He\Desktop\UBC\ELEC391\balancing_code\speech-to-text-key.json"
 
 # Initialize recognizer
 recognizer = sr.Recognizer()
