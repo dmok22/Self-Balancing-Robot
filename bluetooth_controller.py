@@ -70,6 +70,12 @@ async def joystick_loop(client):
     y_button_last = 0
     a_button_last = 0
 
+    sonar_enabled = False
+    b_button_last = 0
+
+    prev_lt = -1
+    prev_rt = -1
+
     try:
         while True:
             state = XInput.get_state(0)
@@ -88,6 +94,18 @@ async def joystick_loop(client):
             # Vibrate based on y intensity
             intensity = abs(y) / 100
             XInput.set_vibration(0, intensity, intensity)
+
+            # Read LT and RT trigger values (0–255)
+            lt_val = state.Gamepad.bLeftTrigger
+            rt_val = state.Gamepad.bRightTrigger
+
+            if lt_val != prev_lt:
+                await send_command(client, f"lt={lt_val}")
+                prev_lt = lt_val
+
+            if rt_val != prev_rt:
+                await send_command(client, f"rt={rt_val}")
+                prev_rt = rt_val
 
             # Toggle mode on X button (0x0400)
             x_button_now = state.Gamepad.wButtons & 0x400
@@ -126,6 +144,14 @@ async def joystick_loop(client):
             if a_button_now and not a_button_last:
                 await recognize_speech_and_send(client)
             a_button_last = a_button_now
+
+            # ✅ Toggle sonar on B button (0x2000)
+            b_button_now = state.Gamepad.wButtons & 0x2000
+            if b_button_now and not b_button_last:
+                sonar_enabled = not sonar_enabled
+                await send_command(client, f"sonar={int(sonar_enabled)}")
+                print(f"📡 Sonar {'enabled' if sonar_enabled else 'disabled'}")
+            b_button_last = b_button_now
 
             # Exit on START (0x0010)
             if state.Gamepad.wButtons & 0x0010:
