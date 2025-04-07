@@ -5,7 +5,7 @@
 // BLE Service & Characteristic
 BLEService customService("00000000-5EC4-4083-81CD-A10B8D5CF6EC");
 BLECharacteristic customCharacteristic(
-    "00000001-5EC4-4083-81CD-A10B8D5CF6EC", BLERead | BLEWrite | BLENotify, 50, false);
+  "00000001-5EC4-4083-81CD-A10B8D5CF6EC", BLERead | BLEWrite | BLENotify, 50, false);
 
 float dt;
 long lastTime;
@@ -27,15 +27,15 @@ const int INPUT_A2 = 9;
 
 float setpoint = 0;
 float PDI_signal;
-float previous_PDI = 0; // For brake light detection
+float previous_PDI = 0;
 float integral = 0;
 float derivative;
 float angle_error, previousError = 0;
 
 float Kp = 17.5;
-float Ki = 65.8;
+float Ki = 66;
 float Kd = 1.37;
-float sp = -0.6;
+float sp = 0;
 
 int motor_difference;
 float turning_coeff = 0.0;
@@ -43,7 +43,10 @@ float moving_coeff = 0.0;
 float moving_mt = 0.0;
 int mode = 0;
 
-// Flashing state for turn signals
+float lt_trigger = 0.0;
+float rt_trigger = 0.0;
+String single_wheel = "";  // "left", "right", or ""
+
 int left_signal_state = 0;
 int right_signal_state = 0;
 bool left_led_on = false;
@@ -51,16 +54,13 @@ bool right_led_on = false;
 unsigned long last_blink_time = 0;
 const unsigned long blink_interval = 500;
 
-void setup()
-{
+void setup() {
   setupBLE();
 
   Serial.begin(9600);
-  if (!IMU.begin())
-  {
+  if (!IMU.begin()) {
     Serial.println("Failed to initialize IMU!");
-    while (1)
-      ;
+    while (1);
   }
 
   Serial.print("Accelerometer sample rate = ");
@@ -78,48 +78,40 @@ void setup()
   pinMode(INPUT_B1, OUTPUT);
   pinMode(INPUT_B2, OUTPUT);
 
-  pinMode(A0, OUTPUT); // Left signal
-  pinMode(A1, OUTPUT); // Right signal
-  pinMode(A2, OUTPUT); // Brake light
-  pinMode(A3, OUTPUT); // Headlight
+  pinMode(A0, OUTPUT);  // Left signal
+  pinMode(A1, OUTPUT);  // Right signal
+  pinMode(A2, OUTPUT);  // Brake light
+  pinMode(A3, OUTPUT);  // Headlight
 }
 
-void loop()
-{
+void loop() {
   handleBLECommands();
   combine();
   PID(angle);
   moveMotors(PDI_signal);
 
-  // Flashing logic for turn signals
   unsigned long current_time = millis();
-  if (current_time - last_blink_time >= blink_interval)
-  {
+  if (current_time - last_blink_time >= blink_interval) {
     last_blink_time = current_time;
 
-    if (left_signal_state)
-    {
+    if (left_signal_state) {
       left_led_on = !left_led_on;
       digitalWrite(A0, left_led_on ? HIGH : LOW);
     }
 
-    if (right_signal_state)
-    {
+    if (right_signal_state) {
       right_led_on = !right_led_on;
       digitalWrite(A1, right_led_on ? HIGH : LOW);
     }
   }
 }
 
-//------------------------------------------------------------------------------------------------------
-void calibrateTarget()
-{
+void calibrateTarget() {
   float sumAngle = 0.0;
   float sumGyroX = 0.0;
   Serial.println("Calibrating... Keep robot still and upright");
 
-  for (int i = 0; i < CALIBRATION_SAMPLES; i++)
-  {
+  for (int i = 0; i < CALIBRATION_SAMPLES; i++) {
     combine();
     sumAngle += angle;
     sumGyroX += gyroX;
@@ -133,14 +125,11 @@ void calibrateTarget()
   Serial.println(setpoint);
 }
 
-void handleBLECommands()
-{
+void handleBLECommands() {
   BLEDevice central = BLE.central();
 
-  if (central)
-  {
-    if (customCharacteristic.written())
-    {
+  if (central) {
+    if (customCharacteristic.written()) {
       int length = customCharacteristic.valueLength();
       char buffer[length + 1];
       memcpy(buffer, customCharacteristic.value(), length);
@@ -153,112 +142,70 @@ void handleBLECommands()
   }
 }
 
-void processCommand(String cmd)
-{
-  if (cmd.startsWith("kp="))
-  {
+void processCommand(String cmd) {
+  if (cmd.startsWith("kp=")) {
     Kp = cmd.substring(3).toFloat();
     respondToBLE("Kp=" + String(Kp));
-  }
-  else if (cmd.startsWith("ki="))
-  {
+  } else if (cmd.startsWith("ki=")) {
     Ki = cmd.substring(3).toFloat();
     respondToBLE("Ki=" + String(Ki));
-  }
-  else if (cmd.startsWith("kd="))
-  {
+  } else if (cmd.startsWith("kd=")) {
     Kd = cmd.substring(3).toFloat();
     respondToBLE("Kd=" + String(Kd));
-  }
-  else if (cmd.startsWith("md="))
-  {
+  } else if (cmd.startsWith("md=")) {
     motor_difference = cmd.substring(3).toFloat();
     respondToBLE("motor_difference=" + String(motor_difference));
-  }
-  else if (cmd.startsWith("sp="))
-  {
+  } else if (cmd.startsWith("sp=")) {
     sp = cmd.substring(3).toFloat();
     respondToBLE("sp=" + String(sp));
-  }
-  else if (cmd.startsWith("mode="))
-  {
+  } else if (cmd.startsWith("mode=")) {
     mode = cmd.substring(5).toInt();
     respondToBLE("mode=" + String(mode));
-  }
-  else if (cmd.startsWith("x="))
-  {
+  } else if (cmd.startsWith("x=")) {
     int commaIndex = cmd.indexOf(',');
-    if (commaIndex > 0)
-    {
+    if (commaIndex > 0) {
       String xStr = cmd.substring(2, commaIndex);
       String yStr = cmd.substring(cmd.indexOf("y=") + 2);
       turning_coeff = xStr.toFloat();
       moving_coeff = yStr.toFloat();
     }
-  }
-  else if (cmd.startsWith("left_signal="))
-  {
+  } else if (cmd.startsWith("lt=")) {
+    lt_trigger = cmd.substring(3).toFloat();
+  } else if (cmd.startsWith("rt=")) {
+    rt_trigger = cmd.substring(3).toFloat();
+  } else if (cmd.startsWith("single=")) {
+    single_wheel = cmd.substring(7);
+    Serial.print("Single wheel mode: ");
+    Serial.println(single_wheel);
+    respondToBLE("single=" + single_wheel);
+  } else if (cmd.startsWith("left_signal=")) {
     left_signal_state = cmd.substring(12).toInt();
-    if (left_signal_state == 0)
-    {
+    if (left_signal_state == 0) {
       digitalWrite(A0, LOW);
       left_led_on = false;
     }
     respondToBLE("left_signal=" + String(left_signal_state));
-  }
-  else if (cmd.startsWith("right_signal="))
-  {
+  } else if (cmd.startsWith("right_signal=")) {
     right_signal_state = cmd.substring(13).toInt();
-    if (right_signal_state == 0)
-    {
+    if (right_signal_state == 0) {
       digitalWrite(A1, LOW);
       right_led_on = false;
     }
     respondToBLE("right_signal=" + String(right_signal_state));
-  }
-  else if (cmd.startsWith("headlight="))
-  {
+  } else if (cmd.startsWith("headlight=")) {
     int val = cmd.substring(10).toInt();
     digitalWrite(A3, val ? HIGH : LOW);
     respondToBLE("headlight=" + String(val));
   }
-  else if (cmd == "forward")
-  {
-    // Logic to move forward
-    moving_coeff = 1.0;
-    respondToBLE("Moving forward");
-  }
-  else if (cmd == "stop")
-  {
-    // Logic to stop
-    moving_coeff = 0.0;
-    respondToBLE("Stopping");
-  }
-  else if (cmd == "left")
-  {
-    // Logic to turn left
-    turning_coeff = -1.0;
-    respondToBLE("Turning left");
-  }
-  else if (cmd == "right")
-  {
-    // Logic to turn right
-    turning_coeff = 1.0;
-    respondToBLE("Turning right");
-  }
 }
 
-void respondToBLE(String response)
-{
+void respondToBLE(String response) {
   customCharacteristic.writeValue(response.c_str());
 }
 
-void setupBLE()
-{
-  if (!BLE.begin())
-  {
-    while (1)
-      ;
+void setupBLE() {
+  if (!BLE.begin()) {
+    while (1);
   }
   BLE.setLocalName("CJJ");
   BLE.setDeviceName("CJJ");
@@ -267,9 +214,7 @@ void setupBLE()
   BLE.advertise();
 }
 
-//---------------------------------------------------------------------------------------------------------
-void combine()
-{
+void combine() {
   Accelerator();
   gyroscope();
 
@@ -277,21 +222,17 @@ void combine()
   float alpha = 0.5;
   acc_angle_filtered = alpha * acc_angle + (1 - alpha) * acc_angle_filtered;
 
-  float k = 0.85;
+  float k = 0.75;
   angle_filter_gry = k * gry_angle + (1 - k) * acc_angle_filtered;
 
-  if (abs(gyroX) < 2.0)
-  {
+  if (abs(gyroX) < 2.0) {
     angle = k * gry_angle + (1 - k) * acc_angle_filtered;
-  }
-  else
-  {
+  } else {
     angle = gry_angle;
   }
 }
 
-void gyroscope()
-{
+void gyroscope() {
   long lastInterval;
   long currentTime = millis();
   lastInterval = currentTime - lastTime;
@@ -302,75 +243,76 @@ void gyroscope()
   gry_angle = angle + ((-gyroX) * dt);
 }
 
-void Accelerator()
-{
+void Accelerator() {
   float x, y, z;
+  int i =
   IMU.readAcceleration(x, y, z);
   acc_angle = atan2f(100 * y, 100 * z);
   acc_angle = acc_angle * (180.0f / M_PI);
 }
 
-void moveMotors(float controlSignal)
-{
+void moveMotors(float controlSignal) {
   int left_pwmValue;
   int right_pwmValue;
 
-  if (mode == 0)
-  {
+  if (mode == 0) {
     moving_mt = 0.05;
-  }
-  else
-  {
+  } else {
     moving_mt = 0.1;
   }
 
-  if (abs(controlSignal) > 0)
-  {
-    left_pwmValue = abs(controlSignal);
-    right_pwmValue = abs(controlSignal) + motor_difference;
-  }
-  else
-  {
-    left_pwmValue = 0;
-    right_pwmValue = 0;
-  }
+if (abs(controlSignal) > 30 && abs(derivative) >= 15) {
+  left_pwmValue = abs(controlSignal) + 25;
+  right_pwmValue = abs(controlSignal) + 25 + motor_difference;
+  Serial.println("1");
+}
+else if (abs(derivative) < 15 || abs(controlSignal) < 30) {
+  left_pwmValue = abs(controlSignal) + 25;
+  right_pwmValue = abs(controlSignal) + 25 + motor_difference;
+  Serial.println("0");
+}
+else {
+  left_pwmValue = 0;
+  right_pwmValue = 0;
+}
 
-  // 🛠 Apply turning logic AFTER setting PWM values
-  if (mode == 0)
-  {
-    if (turning_coeff > 0)
-    {
+
+  if (mode == 0) {
+    if (turning_coeff > 0) {
       right_pwmValue *= (1 - abs(turning_coeff) * 0.005);
-    }
-    else
-    {
+    } else {
       left_pwmValue *= (1 - abs(turning_coeff) * 0.005);
     }
-  }
-  else
-  {
-    if (turning_coeff > 0)
-    {
+  } else {
+    if (turning_coeff > 0) {
       right_pwmValue *= (1 - abs(turning_coeff) * 0.01);
-    }
-    else
-    {
+    } else {
       left_pwmValue *= (1 - abs(turning_coeff) * 0.01);
     }
   }
 
+  if (lt_trigger > 50.0) left_pwmValue = 0;
+  if (rt_trigger > 50.0) right_pwmValue = 0;
+
+  // ✅ New single wheel override logic
+  if (single_wheel == "left") right_pwmValue = 0;
+  else if (single_wheel == "right") left_pwmValue = 0;
+
+  if(abs(controlSignal) < 1){
+    right_pwmValue = 0;
+    left_pwmValue = 0;
+  }
+  
+
   right_pwmValue = constrain(right_pwmValue, 0, 255);
   left_pwmValue = constrain(left_pwmValue, 0, 255);
 
-  if (controlSignal > 0)
-  {
+  if (controlSignal > 0) {
     analogWrite(INPUT_A1, left_pwmValue);
     analogWrite(INPUT_A2, 0);
     analogWrite(INPUT_B1, right_pwmValue);
     analogWrite(INPUT_B2, 0);
-  }
-  else
-  {
+  } else {
     analogWrite(INPUT_A1, 0);
     analogWrite(INPUT_A2, left_pwmValue);
     analogWrite(INPUT_B1, 0);
@@ -378,36 +320,57 @@ void moveMotors(float controlSignal)
   }
 }
 
-void PID(float angle)
-{
+void PID(float angle) {
   double now_PID = millis();
   float dt_PID = (now_PID - lastTime_PID) / 1000.0;
+  float last_d; 
 
-  Serial.print("cjj: ");
-  Serial.println(moving_coeff);
-  angle_error = angle - (setpoint + sp + moving_mt * moving_coeff);
+  //Serial.print("cjj: ");
+  //Serial.println(moving_coeff);
+  angle_error = angle - (setpoint + moving_mt * moving_coeff);
 
-  integral += angle_error * dt_PID;
+  if (abs(angle_error) <= 0.1){
+    angle_error = 0;
+  }
+
+  if(abs(angle_error) <= 0.5){
+    integral = integral;
+  }
+  else{
+    integral += angle_error * dt_PID;
+  }
+
   integral = constrain(integral, -255, 255);
 
   derivative = -gyroX + gryoX_drift;
+  //derivative = (angle_error - previousError)/dt_PID;
   derivative = constrain(derivative, -255, 255);
 
   PDI_signal = (Kp * angle_error) + (Ki * integral) + (Kd * derivative);
   PDI_signal = constrain(PDI_signal, -255, 255);
 
-  // ✅ Brake light logic on A2 based on deceleration
   float decel_threshold = 15.0;
-  if (abs(previous_PDI) - abs(PDI_signal) > decel_threshold)
-  {
+  if (abs(previous_PDI) - abs(PDI_signal) > decel_threshold) {
     digitalWrite(A2, HIGH);
-  }
-  else
-  {
+  } else {
     digitalWrite(A2, LOW);
   }
 
   previous_PDI = PDI_signal;
   previousError = angle_error;
   lastTime_PID = now_PID;
+  
+  
+  //------
+//Serial.print("d: ");
+//Serial.println(derivative, 2);  good 
+
+//Serial.print("integral");
+//Serial.println(PDI_signal, 2);  // prints with 2 decimal places
+
+//Serial.print("angle ");
+//Serial.println(angle_error, 2);  // prints with 2 decimal places
+
+  //------
+
 }
