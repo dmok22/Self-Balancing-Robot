@@ -76,6 +76,8 @@ async def joystick_loop(client):
     prev_lt = -1
     prev_rt = -1
 
+    voice_recognition_active = False
+
     try:
         while True:
             state = XInput.get_state(0)
@@ -139,10 +141,16 @@ async def joystick_loop(client):
                 print(f"💡 Headlight toggled: {headlight}")
             y_button_last = y_button_now
 
-            # Activate voice command on A button (0x1000)
+            # Activate or deactivate voice command on A button (0x1000)
             a_button_now = state.Gamepad.wButtons & 0x1000
             if a_button_now and not a_button_last:
-                await recognize_speech_and_send(client)
+                if voice_recognition_active:
+                    print("Voice recognition deactivated.")
+                    voice_recognition_active = False
+                else:
+                    print("Voice recognition activated.")
+                    voice_recognition_active = True
+                    await recognize_speech_and_send(client)
             a_button_last = a_button_now
 
             # ✅ Toggle sonar on B button (0x2000)
@@ -271,8 +279,8 @@ def verify_password():
 
 # BLE + controller main
 async def main():
-    #if not verify_password():
-        #return
+    # if not verify_password():
+    # return
     await asyncio.sleep(1)
     address = await find_device()
     if not address:

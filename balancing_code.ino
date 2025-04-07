@@ -172,36 +172,21 @@ void handleBLECommands() {
 
 void processCommand(String cmd) {
   if (cmd == "forward") {
-    // Move forward
-    analogWrite(INPUT_A1, 255);
-    analogWrite(INPUT_A2, 0);
-    analogWrite(INPUT_B1, 255);
-    analogWrite(INPUT_B2, 0);
-    respondToBLE("Moving forward");
+    // Increase setpoint to move forward
+    setpoint += 5;
+    respondToBLE("Setpoint increased: " + String(setpoint));
   } else if (cmd == "stop") {
-    // Stop
-    analogWrite(INPUT_A1, 0);
-    analogWrite(INPUT_A2, 0);
-    analogWrite(INPUT_B1, 0);
-    analogWrite(INPUT_B2, 0);
-    respondToBLE("Stopped");
+    // Reset setpoint to stop
+    setpoint = 0;
+    respondToBLE("Setpoint reset: " + String(setpoint));
   } else if (cmd == "left") {
-    // Turn left
-    analogWrite(INPUT_A1, 0);
-    analogWrite(INPUT_A2, 255);
-    analogWrite(INPUT_B1, 255);
-    analogWrite(INPUT_B2, 0);
-    respondToBLE("Turning left");
+    // Adjust turning coefficient to turn left
+    turning_coeff -= 0.1;
+    respondToBLE("Turning left: " + String(turning_coeff));
   } else if (cmd == "right") {
-    // Turn right
-    analogWrite(INPUT_A1, 255);
-    analogWrite(INPUT_A2, 0);
-    analogWrite(INPUT_B1, 0);
-    analogWrite(INPUT_B2, 255);
-    respondToBLE("Turning right");
-  } else if (cmd == "stop listening") {
-    // Stop listening command, no action needed on robot
-    respondToBLE("Listening stopped");
+    // Adjust turning coefficient to turn right
+    turning_coeff += 0.1;
+    respondToBLE("Turning right: " + String(turning_coeff));
   } else if (cmd.startsWith("kp=")) {
     Kp = cmd.substring(3).toFloat();
     respondToBLE("Kp=" + String(Kp));
