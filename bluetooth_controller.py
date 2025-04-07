@@ -153,6 +153,11 @@ async def joystick_loop(client):
                 print(f"📡 Sonar {'enabled' if sonar_enabled else 'disabled'}")
             b_button_last = b_button_now
 
+            if x_button_now:
+                print("X button PRESSED")
+            if y_button_now:
+                print("Y button PRESSED")
+
             # Exit on START (0x0010)
             if state.Gamepad.wButtons & 0x0010:
                 print("🛑 START pressed — exiting.")
