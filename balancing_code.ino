@@ -24,6 +24,9 @@ const int INPUT_B1 = 3;
 const int INPUT_B2 = 5;
 const int INPUT_A1 = 6;
 const int INPUT_A2 = 9;
+const int SONAR_TRIG = 7;
+const int SONAR_ECHO = 8;
+const int SERVO_PIN = 4;
 
 float setpoint = 0;
 float PDI_signal;
@@ -54,7 +57,7 @@ bool right_led_on = false;
 unsigned long last_blink_time = 0;
 const unsigned long blink_interval = 500;
 
-bool sonar_enabled = false;  // ✅ New sonar toggle flag
+bool sonar_enabled = false;
 
 void setup() {
   setupBLE();
@@ -84,6 +87,10 @@ void setup() {
   pinMode(A1, OUTPUT);  // Right signal
   pinMode(A2, OUTPUT);  // Brake light
   pinMode(A3, OUTPUT);  // Headlight
+
+  pinMode(SONAR_TRIG, OUTPUT);
+  pinMode(SONAR_ECHO, INPUT);
+  pinMode(SERVO_PIN, OUTPUT);
 }
 
 void loop() {
@@ -92,10 +99,11 @@ void loop() {
   PID(angle);
   moveMotors(PDI_signal);
 
-  // ✅ Sonar scan placeholder
   if (sonar_enabled) {
-    // Replace with sonar code
-    Serial.println("📡 Sonar scanning active...");
+    float dist = getSonarDistance();
+    Serial.print("📡 Distance: ");
+    Serial.print(dist);
+    Serial.println(" cm");
   }
 
   unsigned long current_time = millis();
@@ -112,6 +120,18 @@ void loop() {
       digitalWrite(A1, right_led_on ? HIGH : LOW);
     }
   }
+}
+
+float getSonarDistance() {
+  digitalWrite(SONAR_TRIG, LOW);
+  delayMicroseconds(2);
+  digitalWrite(SONAR_TRIG, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(SONAR_TRIG, LOW);
+
+  long duration = pulseIn(SONAR_ECHO, HIGH, 20000);
+  float distance_cm = duration * 0.0343 / 2.0;
+  return distance_cm;
 }
 
 void calibrateTarget() {
