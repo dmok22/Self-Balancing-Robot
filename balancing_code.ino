@@ -171,7 +171,38 @@ void handleBLECommands() {
 }
 
 void processCommand(String cmd) {
-  if (cmd.startsWith("kp=")) {
+  if (cmd == "forward") {
+    // Move forward
+    analogWrite(INPUT_A1, 255);
+    analogWrite(INPUT_A2, 0);
+    analogWrite(INPUT_B1, 255);
+    analogWrite(INPUT_B2, 0);
+    respondToBLE("Moving forward");
+  } else if (cmd == "stop") {
+    // Stop
+    analogWrite(INPUT_A1, 0);
+    analogWrite(INPUT_A2, 0);
+    analogWrite(INPUT_B1, 0);
+    analogWrite(INPUT_B2, 0);
+    respondToBLE("Stopped");
+  } else if (cmd == "left") {
+    // Turn left
+    analogWrite(INPUT_A1, 0);
+    analogWrite(INPUT_A2, 255);
+    analogWrite(INPUT_B1, 255);
+    analogWrite(INPUT_B2, 0);
+    respondToBLE("Turning left");
+  } else if (cmd == "right") {
+    // Turn right
+    analogWrite(INPUT_A1, 255);
+    analogWrite(INPUT_A2, 0);
+    analogWrite(INPUT_B1, 0);
+    analogWrite(INPUT_B2, 255);
+    respondToBLE("Turning right");
+  } else if (cmd == "stop listening") {
+    // Stop listening command, no action needed on robot
+    respondToBLE("Listening stopped");
+  } else if (cmd.startsWith("kp=")) {
     Kp = cmd.substring(3).toFloat();
     respondToBLE("Kp=" + String(Kp));
   } else if (cmd.startsWith("ki=")) {
