@@ -23,11 +23,9 @@ os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = r"C:\Users\Jeffrey He\Desktop\UBC
 recognizer = sr.Recognizer()
 valid_commands = ["forward", "stop", "left", "right"]
 
-
 def scale(value):
     scaled = max(min(int((value / 32767) * 100), 100), -100)
     return 0 if abs(scaled) < 5 else scaled
-
 
 async def find_device():
     print("🔍 Scanning for BLE devices...")
@@ -40,13 +38,11 @@ async def find_device():
     print("❌ Device not found.")
     return None
 
-
 async def send_command(client, command):
     try:
         await client.write_gatt_char(CHARACTERISTIC_UUID, command.encode())
     except Exception as e:
         print(f"❌ Failed to send: {e}")
-
 
 async def joystick_loop(client):
     print("🎮 Xbox Controller Active. Press START to exit.")
@@ -74,7 +70,6 @@ async def joystick_loop(client):
         while True:
             state = XInput.get_state(0)
 
-            # Joystick movement
             y = scale(state.Gamepad.sThumbLY)
             x = scale(state.Gamepad.sThumbRX)
             command = f"x={x},y={y}"
@@ -83,11 +78,9 @@ async def joystick_loop(client):
                 print(command)
                 last_command = command
 
-            # Vibration feedback
             intensity = abs(y) / 100
             XInput.set_vibration(0, intensity, intensity)
 
-            # Triggers
             lt_val = state.Gamepad.bLeftTrigger
             rt_val = state.Gamepad.bRightTrigger
             if lt_val != prev_lt:
@@ -97,7 +90,6 @@ async def joystick_loop(client):
                 await send_command(client, f"rt={rt_val}")
                 prev_rt = rt_val
 
-            # X button toggles mode
             x_button_now = state.Gamepad.wButtons & 0x4000
             if x_button_now and not x_button_last:
                 mode_toggle = 1 - mode_toggle
@@ -105,7 +97,6 @@ async def joystick_loop(client):
                 print(f"🔁 Mode toggled: mode={mode_toggle}")
             x_button_last = x_button_now
 
-            # LB and RB toggle signals
             lb_now = state.Gamepad.wButtons & 0x0100
             if lb_now and not lb_last:
                 left_signal = 1 - left_signal
@@ -120,7 +111,6 @@ async def joystick_loop(client):
                 print(f"🟧 Right signal toggled: {right_signal}")
             rb_last = rb_now
 
-            # Y button toggles headlight
             y_button_now = state.Gamepad.wButtons & 0x8000
             if y_button_now and not y_button_last:
                 headlight = 1 - headlight
@@ -128,7 +118,6 @@ async def joystick_loop(client):
                 print(f"💡 Headlight toggled: {headlight}")
             y_button_last = y_button_now
 
-            # A button triggers voice recognition
             a_button_now = state.Gamepad.wButtons & 0x1000
             if a_button_now and not a_button_last:
                 if voice_recognition_active:
@@ -140,14 +129,12 @@ async def joystick_loop(client):
                     await recognize_speech_and_send(client)
             a_button_last = a_button_now
 
-            # ✅ B button triggers one-time sonar scan
             b_button_now = state.Gamepad.wButtons & 0x2000
             if b_button_now and not b_button_last:
                 await send_command(client, "scan=1")
                 print("📡 One-time sonar sweep triggered")
             b_button_last = b_button_now
 
-            # START exits
             if state.Gamepad.wButtons & 0x0010:
                 print("🛑 START pressed — exiting.")
                 break
@@ -159,7 +146,6 @@ async def joystick_loop(client):
     finally:
         XInput.set_vibration(0, 0, 0)
         print("🧹 Controller loop ended.")
-
 
 async def recognize_speech_and_send(client):
     with sr.Microphone() as source:
@@ -198,16 +184,13 @@ async def recognize_speech_and_send(client):
             except sr.RequestError as e:
                 print(f"❌ Google STT error: {e}")
 
-
 def get_user_input(prompt):
     root = tk.Tk()
     root.withdraw()
     return simpledialog.askstring("Input", prompt)
 
-
 def generate_random_number_password(length=6):
     return "".join(secrets.choice(string.digits) for _ in range(length))
-
 
 def send_email(subject, message, to_email):
     from_email = "20040418jeff@gmail.com"
@@ -221,7 +204,6 @@ def send_email(subject, message, to_email):
         server.starttls()
         server.login(from_email, password)
         server.sendmail(from_email, to_email, msg.as_string())
-
 
 def verify_password():
     password = generate_random_number_password()
@@ -237,10 +219,7 @@ def verify_password():
     messagebox.showerror("Error", "All attempts used. Please restart.")
     return False
 
-
-# Main BLE loop
 async def main():
-    # if not verify_password(): return
     await asyncio.sleep(1)
     address = await find_device()
     if not address:
@@ -260,7 +239,6 @@ async def main():
             await joystick_loop(client)
     except Exception as e:
         print(f"❌ BLE connection error: {e}")
-
 
 if __name__ == "__main__":
     asyncio.run(main())
