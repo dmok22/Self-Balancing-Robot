@@ -37,7 +37,7 @@ async def find_device():
 async def send_command(client, command):
     try:
         await client.write_gatt_char(CHARACTERISTIC_UUID, command.encode())
-        await asyncio.sleep(0.2)  # Prevent BLE overload/disconnect
+        await asyncio.sleep(0.2)
     except Exception as e:
         print(f"❌ Failed to send: {e}")
 
@@ -63,6 +63,9 @@ async def joystick_loop(client):
     prev_rt = -1
 
     voice_recognition_active = False
+
+    cruise_enabled = False
+    dpad_up_last = False
 
     try:
         while True:
@@ -132,20 +135,17 @@ async def joystick_loop(client):
                 scan_in_progress = True
                 await send_command(client, "scan=1")
                 print("📡 One-time sonar sweep triggered")
-                await asyncio.sleep(1.5)  # Give time for full scan to complete
+                await asyncio.sleep(1.5)
                 scan_in_progress = False
             b_button_last = b_button_now
 
-            # D-Pad Up toggles cruise control
+            # 🆕 D-Pad Up (bit 0x0001) to toggle cruise control
             dpad_up_now = state.Gamepad.wButtons & 0x0001
-            if dpad_up_now and not hasattr(joystick_loop, "cruise_last"):
-                joystick_loop.cruise_last = False
-            if dpad_up_now and not joystick_loop.cruise_last:
-                joystick_loop.cruise_enabled = not getattr(joystick_loop, "cruise_enabled", False)
-                await send_command(client, f"cruise={int(joystick_loop.cruise_enabled)}")
-                print(f"🚗 Cruise Control toggled: {joystick_loop.cruise_enabled}")
-            joystick_loop.cruise_last = bool(dpad_up_now)
-
+            if dpad_up_now and not dpad_up_last:
+                cruise_enabled = not cruise_enabled
+                await send_command(client, f"cruise={int(cruise_enabled)}")
+                print(f"🚗 Cruise Control toggled: {cruise_enabled}")
+            dpad_up_last = bool(dpad_up_now)
 
             if state.Gamepad.wButtons & 0x0010:
                 print("🛑 START pressed — exiting.")
