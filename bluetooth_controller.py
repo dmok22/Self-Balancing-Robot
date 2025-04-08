@@ -23,10 +23,6 @@ os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = r"C:\Users\Jeffrey He\Desktop\UBC
 recognizer = sr.Recognizer()
 valid_commands = ["forward", "stop", "left", "right"]
 
-def scale(value):
-    scaled = max(min(int((value / 32767) * 100), 100), -100)
-    return 0 if abs(scaled) < 5 else scaled
-
 async def find_device():
     print("🔍 Scanning for BLE devices...")
     devices = await BleakScanner.discover(timeout=5.0)
@@ -41,6 +37,7 @@ async def find_device():
 async def send_command(client, command):
     try:
         await client.write_gatt_char(CHARACTERISTIC_UUID, command.encode())
+        await asyncio.sleep(0.2)  # Prevent BLE overload/disconnect
     except Exception as e:
         print(f"❌ Failed to send: {e}")
 
@@ -60,6 +57,7 @@ async def joystick_loop(client):
     a_button_last = 0
 
     b_button_last = 0
+    scan_in_progress = False
 
     prev_lt = -1
     prev_rt = -1
@@ -130,9 +128,12 @@ async def joystick_loop(client):
             a_button_last = a_button_now
 
             b_button_now = state.Gamepad.wButtons & 0x2000
-            if b_button_now and not b_button_last:
+            if b_button_now and not b_button_last and not scan_in_progress:
+                scan_in_progress = True
                 await send_command(client, "scan=1")
                 print("📡 One-time sonar sweep triggered")
+                await asyncio.sleep(1.5)  # Give time for full scan to complete
+                scan_in_progress = False
             b_button_last = b_button_now
 
             if state.Gamepad.wButtons & 0x0010:
@@ -146,6 +147,10 @@ async def joystick_loop(client):
     finally:
         XInput.set_vibration(0, 0, 0)
         print("🧹 Controller loop ended.")
+
+def scale(value):
+    scaled = max(min(int((value / 32767) * 100), 100), -100)
+    return 0 if abs(scaled) < 5 else scaled
 
 async def recognize_speech_and_send(client):
     with sr.Microphone() as source:
