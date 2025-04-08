@@ -21,7 +21,13 @@ CHARACTERISTIC_UUID = "00000001-5EC4-4083-81CD-A10B8D5CF6EC"
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = r"C:\Users\Jeffrey He\Desktop\UBC\ELEC391\balancing_code\speech-to-text-key.json"
 
 recognizer = sr.Recognizer()
-valid_commands = ["forward", "stop", "left", "right"]
+valid_commands = ["forward", "stop", "left", "right", "backward", "headlight"]
+
+scan_in_progress = False
+
+def scale(value):
+    scaled = max(min(int((value / 32767) * 100), 100), -100)
+    return 0 if abs(scaled) < 5 else scaled
 
 async def find_device():
     print("🔍 Scanning for BLE devices...")
@@ -35,13 +41,16 @@ async def find_device():
     return None
 
 async def send_command(client, command):
+    global scan_in_progress  # 🔧 Add this
     try:
+        if scan_in_progress:
+            return
         await client.write_gatt_char(CHARACTERISTIC_UUID, command.encode())
-        await asyncio.sleep(0.2)
     except Exception as e:
         print(f"❌ Failed to send: {e}")
 
 async def joystick_loop(client):
+    global scan_in_progress
     print("🎮 Xbox Controller Active. Press START to exit.")
     last_command = ""
     mode_toggle = 0
@@ -57,15 +66,11 @@ async def joystick_loop(client):
     a_button_last = 0
 
     b_button_last = 0
-    scan_in_progress = False
 
     prev_lt = -1
     prev_rt = -1
 
     voice_recognition_active = False
-
-    cruise_enabled = False
-    dpad_up_last = False
 
     try:
         while True:
@@ -131,21 +136,16 @@ async def joystick_loop(client):
             a_button_last = a_button_now
 
             b_button_now = state.Gamepad.wButtons & 0x2000
-            if b_button_now and not b_button_last and not scan_in_progress:
-                scan_in_progress = True
-                await send_command(client, "scan=1")
+            if b_button_now and not b_button_last:
+                await send_command(client, "scan")  # First send the scan request
+                scan_in_progress = True             # Then block all other commands
                 print("📡 One-time sonar sweep triggered")
-                await asyncio.sleep(1.5)
-                scan_in_progress = False
-            b_button_last = b_button_now
 
-            # 🆕 D-Pad Up (bit 0x0001) to toggle cruise control
-            dpad_up_now = state.Gamepad.wButtons & 0x0001
-            if dpad_up_now and not dpad_up_last:
-                cruise_enabled = not cruise_enabled
-                await send_command(client, f"cruise={int(cruise_enabled)}")
-                print(f"🚗 Cruise Control toggled: {cruise_enabled}")
-            dpad_up_last = bool(dpad_up_now)
+                # Safe delay without blocking BLE event loop
+                for _ in range(250):
+                    await asyncio.sleep(0.01)
+
+                scan_in_progress = False
 
             if state.Gamepad.wButtons & 0x0010:
                 print("🛑 START pressed — exiting.")
@@ -158,10 +158,6 @@ async def joystick_loop(client):
     finally:
         XInput.set_vibration(0, 0, 0)
         print("🧹 Controller loop ended.")
-
-def scale(value):
-    scaled = max(min(int((value / 32767) * 100), 100), -100)
-    return 0 if abs(scaled) < 5 else scaled
 
 async def recognize_speech_and_send(client):
     with sr.Microphone() as source:
@@ -224,7 +220,7 @@ def send_email(subject, message, to_email):
 def verify_password():
     password = generate_random_number_password()
     email = get_user_input("Enter your email to receive a one-time password:")
-    send_email("Oven Controller Password", f"Your password is: {password}", email)
+    send_email("Robot Controller Password", f"Your password is: {password}", email)
     for i in range(3, 0, -1):
         user_input = get_user_input(f"Enter the password sent to your email (Attempts left: {i}):")
         if user_input == password:
@@ -236,6 +232,10 @@ def verify_password():
     return False
 
 async def main():
+
+    #if not await asyncio.to_thread(verify_password):
+    #    return
+    
     await asyncio.sleep(1)
     address = await find_device()
     if not address:
