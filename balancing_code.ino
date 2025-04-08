@@ -3,24 +3,12 @@
 #include <ArduinoBLE.h>
 #include <Servo.h>
 
-// BLE Service & Characteristic
+// BLE setup
 BLEService customService("00000000-5EC4-4083-81CD-A10B8D5CF6EC");
 BLECharacteristic customCharacteristic(
   "00000001-5EC4-4083-81CD-A10B8D5CF6EC", BLERead | BLEWrite | BLENotify, 50, false);
 
-float dt;
-long lastTime;
-long lastTime_PID;
-
-float angle;
-float angle_filter_gry;
-float gry_angle, acc_angle;
-float gyroX, gyroY, gyroZ;
-float gryoX_drift;
-
-bool isCalibrated = false;
-const int CALIBRATION_SAMPLES = 1000;
-
+// Motor & sensor pins
 const int INPUT_B1 = 3;
 const int INPUT_B2 = 5;
 const int INPUT_A1 = 6;
@@ -29,28 +17,29 @@ const int SONAR_TRIG = 7;
 const int SONAR_ECHO = 8;
 const int SERVO_PIN = 4;
 
+// State variables
+float dt;
+long lastTime;
+long lastTime_PID;
+float angle, gry_angle, acc_angle, angle_filter_gry;
+float gyroX, gyroY, gyroZ;
+float gryoX_drift;
+bool isCalibrated = false;
+const int CALIBRATION_SAMPLES = 1000;
+
 float setpoint = 0;
-float PDI_signal;
-float previous_PDI = 0;
-float integral = 0;
-float derivative;
+float PDI_signal, previous_PDI = 0;
+float integral = 0, derivative;
 float angle_error, previousError = 0;
-
-float Kp = 17.5;
-float Ki = 66;
-float Kd = 1.37;
+float Kp = 17.5, Ki = 66, Kd = 1.37;
 float sp = 0;
-
 int motor_difference;
-float turning_coeff = 0.0;
-float moving_coeff = 0.0;
-float moving_mt = 0.0;
+float turning_coeff = 0.0, moving_coeff = 0.0, moving_mt = 0.0;
 int mode = 0;
-
-float lt_trigger = 0.0;
-float rt_trigger = 0.0;
+float lt_trigger = 0.0, rt_trigger = 0.0;
 String single_wheel = "";
 
+// Signals
 int left_signal_state = 0;
 int right_signal_state = 0;
 bool left_led_on = false;
@@ -58,9 +47,12 @@ bool right_led_on = false;
 unsigned long last_blink_time = 0;
 const unsigned long blink_interval = 500;
 
+// Sonar
 Servo sonarServo;
-
-enum SonarState { IDLE, TO_CENTER, TO_LEFT, READ_LEFT, TO_RIGHT, READ_RIGHT, RETURN_CENTER, DONE };
+enum SonarState {
+  IDLE, TO_CENTER, WAIT_BEFORE_LEFT, TO_LEFT, READ_LEFT,
+  TO_RIGHT, READ_RIGHT, RETURN_CENTER, SEND_RESULTS, DONE
+};
 SonarState sonarState = IDLE;
 unsigned long sonarTimer = 0;
 float sonarLeft = 0, sonarRight = 0, sonarForward = 0;
@@ -74,48 +66,42 @@ void setup() {
     while (1);
   }
 
-  Serial.print("Accelerometer sample rate = ");
-  Serial.print(IMU.accelerationSampleRate());
-  Serial.println(" Hz");
-
   lastTime = millis();
   lastTime_PID = millis();
-
   delay(1000);
-  calibrateTarget();
 
   pinMode(INPUT_A1, OUTPUT);
   pinMode(INPUT_A2, OUTPUT);
   pinMode(INPUT_B1, OUTPUT);
   pinMode(INPUT_B2, OUTPUT);
 
-  pinMode(A0, OUTPUT);
-  pinMode(A1, OUTPUT);
-  pinMode(A2, OUTPUT);
-  pinMode(A3, OUTPUT);
+  pinMode(A0, OUTPUT);  // left signal
+  pinMode(A1, OUTPUT);  // right signal
+  pinMode(A2, OUTPUT);  // brake
+  pinMode(A3, OUTPUT);  // headlight
 
   pinMode(SONAR_TRIG, OUTPUT);
   pinMode(SONAR_ECHO, INPUT);
   sonarServo.attach(SERVO_PIN);
   sonarServo.write(90);
+
+  calibrateTarget();
 }
 
 void loop() {
   handleBLECommands();
   combine();
-  handleSonarSweep();  // ✅ NEW: non-blocking sonar FSM
+  handleSonarSweep();
   PID(angle);
   moveMotors(PDI_signal);
 
   unsigned long current_time = millis();
   if (current_time - last_blink_time >= blink_interval) {
     last_blink_time = current_time;
-
     if (left_signal_state) {
       left_led_on = !left_led_on;
       digitalWrite(A0, left_led_on ? HIGH : LOW);
     }
-
     if (right_signal_state) {
       right_led_on = !right_led_on;
       digitalWrite(A1, right_led_on ? HIGH : LOW);
@@ -123,70 +109,8 @@ void loop() {
   }
 }
 
-void handleSonarSweep() {
-  switch (sonarState) {
-    case IDLE:
-      return;
-    case TO_CENTER:
-      sonarServo.write(90);
-      sonarTimer = millis();
-      sonarState = TO_LEFT;
-      break;
-    case TO_LEFT:
-      if (millis() - sonarTimer >= 250) {
-        sonarServo.write(45);
-        sonarTimer = millis();
-        sonarState = READ_LEFT;
-      }
-      break;
-    case READ_LEFT:
-      if (millis() - sonarTimer >= 250) {
-        sonarLeft = getSonarDistance();
-        sonarServo.write(135);
-        sonarTimer = millis();
-        sonarState = READ_RIGHT;
-      }
-      break;
-    case READ_RIGHT:
-      if (millis() - sonarTimer >= 250) {
-        sonarRight = getSonarDistance();
-        sonarServo.write(90);
-        sonarTimer = millis();
-        sonarState = RETURN_CENTER;
-      }
-      break;
-    case RETURN_CENTER:
-      if (millis() - sonarTimer >= 250) {
-        sonarForward = getSonarDistance();
-        respondToBLE("sonar_l=" + String(sonarLeft));
-        delay(50);
-        respondToBLE("sonar_r=" + String(sonarRight));
-        delay(50);
-        respondToBLE("sonar_f=" + String(sonarForward));
-        sonarState = DONE;
-      }
-      break;
-    case DONE:
-      sonarState = IDLE;
-      break;
-  }
-}
-
-float getSonarDistance() {
-  digitalWrite(SONAR_TRIG, LOW);
-  delayMicroseconds(2);
-  digitalWrite(SONAR_TRIG, HIGH);
-  delayMicroseconds(10);
-  digitalWrite(SONAR_TRIG, LOW);
-
-  long duration = pulseIn(SONAR_ECHO, HIGH, 20000);
-  float distance_cm = duration * 0.0343 / 2.0;
-  return duration == 0 ? -1 : distance_cm;
-}
-
 void calibrateTarget() {
-  float sumAngle = 0.0;
-  float sumGyroX = 0.0;
+  float sumAngle = 0.0, sumGyroX = 0.0;
   Serial.println("Calibrating... Keep robot still and upright");
 
   for (int i = 0; i < CALIBRATION_SAMPLES; i++) {
@@ -203,19 +127,89 @@ void calibrateTarget() {
   Serial.println(setpoint);
 }
 
+void handleSonarSweep() {
+  switch (sonarState) {
+    case IDLE:
+      return;
+
+    case TO_CENTER:
+      sonarServo.write(90);
+      sonarTimer = millis();
+      sonarState = WAIT_BEFORE_LEFT;
+      break;
+
+    case WAIT_BEFORE_LEFT:
+      if (millis() - sonarTimer >= 400) {
+        sonarServo.write(60);
+        sonarTimer = millis();
+        sonarState = READ_LEFT;
+      }
+      break;
+
+    case READ_LEFT:
+      if (millis() - sonarTimer >= 400) {
+        sonarLeft = getSonarDistance();
+        sonarServo.write(120);
+        sonarTimer = millis();
+        sonarState = READ_RIGHT;
+      }
+      break;
+
+    case READ_RIGHT:
+      if (millis() - sonarTimer >= 400) {
+        sonarRight = getSonarDistance();
+        sonarServo.write(90);
+        sonarTimer = millis();
+        sonarState = RETURN_CENTER;
+      }
+      break;
+
+    case RETURN_CENTER:
+      if (millis() - sonarTimer >= 400) {
+        sonarForward = getSonarDistance();
+        sonarTimer = millis();
+        sonarState = SEND_RESULTS;
+      }
+      break;
+
+    case SEND_RESULTS:
+      respondToBLE("sonar_l=" + String(sonarLeft));
+      delay(100);
+      respondToBLE("sonar_r=" + String(sonarRight));
+      delay(100);
+      respondToBLE("sonar_f=" + String(sonarForward));
+      delay(100);
+      sonarState = DONE;
+      break;
+
+    case DONE:
+      sonarState = IDLE;
+      break;
+  }
+}
+
+float getSonarDistance() {
+  digitalWrite(SONAR_TRIG, LOW);
+  delayMicroseconds(2);
+  digitalWrite(SONAR_TRIG, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(SONAR_TRIG, LOW);
+
+  long duration = pulseIn(SONAR_ECHO, HIGH, 20000);
+  return duration == 0 ? -1 : (duration * 0.0343 / 2.0);
+}
+
 void handleBLECommands() {
   BLEDevice central = BLE.central();
-
   if (central) {
     if (customCharacteristic.written()) {
       int length = customCharacteristic.valueLength();
       char buffer[length + 1];
       memcpy(buffer, customCharacteristic.value(), length);
       buffer[length] = '\0';
-
-      String receivedCommand = String(buffer);
-      processCommand(receivedCommand);
-      respondToBLE(receivedCommand);
+      String cmd = String(buffer);
+      processCommand(cmd);
+      respondToBLE(cmd);
     }
   }
 }
@@ -223,78 +217,58 @@ void handleBLECommands() {
 void processCommand(String cmd) {
   if (cmd == "forward") {
     setpoint += 5;
-    respondToBLE("Setpoint increased: " + String(setpoint));
   } else if (cmd == "stop") {
     setpoint = 0;
-    respondToBLE("Setpoint reset: " + String(setpoint));
   } else if (cmd == "left") {
     turning_coeff -= 0.1;
-    respondToBLE("Turning left: " + String(turning_coeff));
   } else if (cmd == "right") {
     turning_coeff += 0.1;
-    respondToBLE("Turning right: " + String(turning_coeff));
   } else if (cmd.startsWith("kp=")) {
     Kp = cmd.substring(3).toFloat();
-    respondToBLE("Kp=" + String(Kp));
   } else if (cmd.startsWith("ki=")) {
     Ki = cmd.substring(3).toFloat();
-    respondToBLE("Ki=" + String(Ki));
   } else if (cmd.startsWith("kd=")) {
     Kd = cmd.substring(3).toFloat();
-    respondToBLE("Kd=" + String(Kd));
   } else if (cmd.startsWith("md=")) {
     motor_difference = cmd.substring(3).toFloat();
-    respondToBLE("motor_difference=" + String(motor_difference));
   } else if (cmd.startsWith("sp=")) {
     sp = cmd.substring(3).toFloat();
-    respondToBLE("sp=" + String(sp));
   } else if (cmd.startsWith("mode=")) {
     mode = cmd.substring(5).toInt();
-    respondToBLE("mode=" + String(mode));
   } else if (cmd.startsWith("x=")) {
     int commaIndex = cmd.indexOf(',');
-    if (commaIndex > 0) {
-      String xStr = cmd.substring(2, commaIndex);
-      String yStr = cmd.substring(cmd.indexOf("y=") + 2);
-      turning_coeff = xStr.toFloat();
-      moving_coeff = yStr.toFloat();
-    }
+    String xStr = cmd.substring(2, commaIndex);
+    String yStr = cmd.substring(cmd.indexOf("y=") + 2);
+    turning_coeff = xStr.toFloat();
+    moving_coeff = yStr.toFloat();
   } else if (cmd.startsWith("lt=")) {
     lt_trigger = cmd.substring(3).toFloat();
   } else if (cmd.startsWith("rt=")) {
     rt_trigger = cmd.substring(3).toFloat();
-  } else if (cmd.startsWith("sonar=")) {
-    // Removed continuous sonar logic
   } else if (cmd.startsWith("scan=")) {
     int doScan = cmd.substring(5).toInt();
     if (doScan == 1 && sonarState == IDLE) {
       sonarState = TO_CENTER;
       sonarTimer = millis();
-      Serial.println("📡 Starting non-blocking sonar scan...");
+      Serial.println("📡 Starting sonar scan...");
     }
   } else if (cmd.startsWith("single=")) {
     single_wheel = cmd.substring(7);
-    Serial.print("Single wheel mode: ");
-    Serial.println(single_wheel);
-    respondToBLE("single=" + single_wheel);
   } else if (cmd.startsWith("left_signal=")) {
     left_signal_state = cmd.substring(12).toInt();
     if (left_signal_state == 0) {
       digitalWrite(A0, LOW);
       left_led_on = false;
     }
-    respondToBLE("left_signal=" + String(left_signal_state));
   } else if (cmd.startsWith("right_signal=")) {
     right_signal_state = cmd.substring(13).toInt();
     if (right_signal_state == 0) {
       digitalWrite(A1, LOW);
       right_led_on = false;
     }
-    respondToBLE("right_signal=" + String(right_signal_state));
   } else if (cmd.startsWith("headlight=")) {
     int val = cmd.substring(10).toInt();
     digitalWrite(A3, val ? HIGH : LOW);
-    respondToBLE("headlight=" + String(val));
   }
 }
 
@@ -303,9 +277,7 @@ void respondToBLE(String response) {
 }
 
 void setupBLE() {
-  if (!BLE.begin()) {
-    while (1);
-  }
+  if (!BLE.begin()) while (1);
   BLE.setLocalName("CJJ");
   BLE.setDeviceName("CJJ");
   customService.addCharacteristic(customCharacteristic);
@@ -324,92 +296,50 @@ void combine() {
   float k = 0.75;
   angle_filter_gry = k * gry_angle + (1 - k) * acc_angle_filtered;
 
-  if (abs(gyroX) < 2.0) {
-    angle = k * gry_angle + (1 - k) * acc_angle_filtered;
-  } else {
-    angle = gry_angle;
-  }
+  if (abs(gyroX) < 2.0) angle = angle_filter_gry;
+  else angle = gry_angle;
 }
 
 void gyroscope() {
-  long lastInterval;
-  long currentTime = millis();
-  lastInterval = currentTime - lastTime;
-  lastTime = currentTime;
+  long now = millis();
+  dt = (now - lastTime) / 1000.0;
+  lastTime = now;
 
   IMU.readGyroscope(gyroX, gyroY, gyroZ);
-  dt = lastInterval / 1000.0;
-  gry_angle = angle + ((-gyroX) * dt);
+  gry_angle = angle + (-gyroX * dt);
 }
 
 void Accelerator() {
   float x, y, z;
   IMU.readAcceleration(x, y, z);
-  acc_angle = atan2f(100 * y, 100 * z);
-  acc_angle = acc_angle * (180.0f / M_PI);
+  acc_angle = atan2f(100 * y, 100 * z) * (180.0f / M_PI);
 }
 
 void moveMotors(float controlSignal) {
-  int left_pwmValue;
-  int right_pwmValue;
+  int left_pwm = abs(controlSignal) + 25;
+  int right_pwm = left_pwm + motor_difference;
 
-  if (mode == 0) {
-    moving_mt = 0.05;
-  } else {
-    moving_mt = 0.1;
-  }
+  if (mode == 0) moving_mt = 0.05;
+  else moving_mt = 0.1;
 
-  if (abs(controlSignal) > 30 && abs(derivative) >= 15) {
-    left_pwmValue = abs(controlSignal) + 25;
-    right_pwmValue = abs(controlSignal) + 25 + motor_difference;
-    Serial.println("1");
-  } else if (abs(derivative) < 15 || abs(controlSignal) < 30) {
-    left_pwmValue = abs(controlSignal) + 25;
-    right_pwmValue = abs(controlSignal) + 25 + motor_difference;
-    Serial.println("0");
-  } else {
-    left_pwmValue = 0;
-    right_pwmValue = 0;
-  }
+  if (turning_coeff > 0) right_pwm *= (1 - abs(turning_coeff) * 0.01);
+  else left_pwm *= (1 - abs(turning_coeff) * 0.01);
 
-  if (mode == 0) {
-    if (turning_coeff > 0) {
-      right_pwmValue *= (1 - abs(turning_coeff) * 0.005);
-    } else {
-      left_pwmValue *= (1 - abs(turning_coeff) * 0.005);
-    }
-  } else {
-    if (turning_coeff > 0) {
-      right_pwmValue *= (1 - abs(turning_coeff) * 0.01);
-    } else {
-      left_pwmValue *= (1 - abs(turning_coeff) * 0.01);
-    }
-  }
+  if (lt_trigger > 50) left_pwm = 0;
+  if (rt_trigger > 50) right_pwm = 0;
+  if (single_wheel == "left") right_pwm = 0;
+  if (single_wheel == "right") left_pwm = 0;
+  if (abs(controlSignal) < 1) left_pwm = right_pwm = 0;
 
-  if (lt_trigger > 50.0) left_pwmValue = 0;
-  if (rt_trigger > 50.0) right_pwmValue = 0;
-
-  if (single_wheel == "left") right_pwmValue = 0;
-  else if (single_wheel == "right") left_pwmValue = 0;
-
-  if (abs(controlSignal) < 1) {
-    right_pwmValue = 0;
-    left_pwmValue = 0;
-  }
-
-  right_pwmValue = constrain(right_pwmValue, 0, 255);
-  left_pwmValue = constrain(left_pwmValue, 0, 255);
+  left_pwm = constrain(left_pwm, 0, 255);
+  right_pwm = constrain(right_pwm, 0, 255);
 
   if (controlSignal > 0) {
-    analogWrite(INPUT_A1, left_pwmValue);
-    analogWrite(INPUT_A2, 0);
-    analogWrite(INPUT_B1, right_pwmValue);
-    analogWrite(INPUT_B2, 0);
+    analogWrite(INPUT_A1, left_pwm); analogWrite(INPUT_A2, 0);
+    analogWrite(INPUT_B1, right_pwm); analogWrite(INPUT_B2, 0);
   } else {
-    analogWrite(INPUT_A1, 0);
-    analogWrite(INPUT_A2, left_pwmValue);
-    analogWrite(INPUT_B1, 0);
-    analogWrite(INPUT_B2, right_pwmValue);
+    analogWrite(INPUT_A1, 0); analogWrite(INPUT_A2, left_pwm);
+    analogWrite(INPUT_B1, 0); analogWrite(INPUT_B2, right_pwm);
   }
 }
 
@@ -418,14 +348,8 @@ void PID(float angle) {
   float dt_PID = (now_PID - lastTime_PID) / 1000.0;
 
   angle_error = angle - (setpoint + moving_mt * moving_coeff);
-
-  if (abs(angle_error) <= 0.1) {
-    angle_error = 0;
-  }
-
-  if (abs(angle_error) > 0.5) {
-    integral += angle_error * dt_PID;
-  }
+  if (abs(angle_error) <= 0.1) angle_error = 0;
+  if (abs(angle_error) > 0.5) integral += angle_error * dt_PID;
 
   integral = constrain(integral, -255, 255);
   derivative = -gyroX + gryoX_drift;
@@ -434,12 +358,8 @@ void PID(float angle) {
   PDI_signal = (Kp * angle_error) + (Ki * integral) + (Kd * derivative);
   PDI_signal = constrain(PDI_signal, -255, 255);
 
-  float decel_threshold = 15.0;
-  if (abs(previous_PDI) - abs(PDI_signal) > decel_threshold) {
-    digitalWrite(A2, HIGH);
-  } else {
-    digitalWrite(A2, LOW);
-  }
+  if (abs(previous_PDI) - abs(PDI_signal) > 15.0) digitalWrite(A2, HIGH);
+  else digitalWrite(A2, LOW);
 
   previous_PDI = PDI_signal;
   previousError = angle_error;
