@@ -136,6 +136,17 @@ async def joystick_loop(client):
                 scan_in_progress = False
             b_button_last = b_button_now
 
+            # D-Pad Up toggles cruise control
+            dpad_up_now = state.Gamepad.wButtons & 0x0001
+            if dpad_up_now and not hasattr(joystick_loop, "cruise_last"):
+                joystick_loop.cruise_last = False
+            if dpad_up_now and not joystick_loop.cruise_last:
+                joystick_loop.cruise_enabled = not getattr(joystick_loop, "cruise_enabled", False)
+                await send_command(client, f"cruise={int(joystick_loop.cruise_enabled)}")
+                print(f"🚗 Cruise Control toggled: {joystick_loop.cruise_enabled}")
+            joystick_loop.cruise_last = bool(dpad_up_now)
+
+
             if state.Gamepad.wButtons & 0x0010:
                 print("🛑 START pressed — exiting.")
                 break
