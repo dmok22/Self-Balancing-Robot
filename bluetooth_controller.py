@@ -17,17 +17,16 @@ from tkinter import messagebox
 DEVICE_NAME = "CJJ"
 CHARACTERISTIC_UUID = "00000001-5EC4-4083-81CD-A10B8D5CF6EC"
 
-# Google Cloud credentials
+# Google credentials
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = r"C:\Users\Jeffrey He\Desktop\UBC\ELEC391\balancing_code\speech-to-text-key.json"
 
-# Voice command setup
 recognizer = sr.Recognizer()
 valid_commands = ["forward", "stop", "left", "right"]
 
 
 def scale(value):
     scaled = max(min(int((value / 32767) * 100), 100), -100)
-    return 0 if abs(scaled) < 5 else scaled  # Deadzone
+    return 0 if abs(scaled) < 5 else scaled
 
 
 async def find_device():
@@ -239,7 +238,7 @@ def verify_password():
     return False
 
 
-# BLE connection + controller loop
+# Main BLE loop
 async def main():
     # if not verify_password(): return
     await asyncio.sleep(1)
@@ -248,9 +247,11 @@ async def main():
         return
 
     def handle_notify(sender, data):
-        msg = data.decode("utf-8")
-        if msg.startswith("sonar_"):
-            print(f"📡 {msg}")
+        try:
+            msg = data.decode("utf-8").strip()
+            print(f"📲 BLE: {msg}")
+        except Exception as e:
+            print(f"❌ BLE notify decode error: {e}")
 
     try:
         async with BleakClient(address, timeout=20.0) as client:
